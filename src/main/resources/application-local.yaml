@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+spring:
+  application.name: Expenses TG-bot
+  datasource:
+    url: jdbc:postgresql://localhost:5542/tg_budget
+    username: test
+    password: test
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      hibernate.format_sql: true
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:migrations
+telegram:
+  enabled: true
+  bot:
+    username: expenses_statistic_bot
+    token:
+
+system:
+  dispatcher-capacity: 100
+  chat-blocking-duration: 1000
