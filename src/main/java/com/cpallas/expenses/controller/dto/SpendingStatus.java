@@ -2,6 +2,8 @@ package com.cpallas.expenses.controller.dto;
 
 import lombok.Builder;
 
+import java.util.Locale;
+
 @Builder
 public class SpendingStatus {
 
@@ -9,7 +11,9 @@ public class SpendingStatus {
     private Double income;
 
     public String getStatus() {
-        return "Потрачено: %.1f Сумма трат на месяц: %.1f, Остаток в этом месяце: %.1f"
-                .formatted(spent, income, income - spent);
+        return String.format(
+                Locale.FRANCE,
+                "Потрачено: %.1f Сумма трат на месяц: %.1f, Остаток в этом месяце: %.1f",
+                spent, income, income - spent);
     }
 }
