@@ -28,8 +28,8 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import java.io.ByteArrayInputStream;
+import java.math.BigDecimal;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -195,7 +195,7 @@ public class UpdateHandler {
 
     private void addingExpenseAmount(Update update, UserSession session) throws TelegramApiException {
         try {
-            session.setAmount(Double.valueOf(update.getMessage().getText().replace(',', '.')));
+            session.setAmount(new BigDecimal(update.getMessage().getText().replace(',', '.')));
             session.setStep(Step.WAITING_FOR_EXPENSE_CATEGORY);
             List<CategoryJpa> categories = expenseService.getCategories(new ChatId(getChatIdFromUpdate(update)));
             if (categories.isEmpty()) {

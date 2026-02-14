@@ -2,6 +2,8 @@ package com.cpallas.expenses;
 
 public enum Step {
 
+    QUICK_SAVE_EXPENSE,
+
     SAVING_EXPENSE,
     DOWNLOAD_EXCEL_FILE,
     GETTING_CURRENT_STATUS,

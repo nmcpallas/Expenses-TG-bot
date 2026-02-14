@@ -43,7 +43,7 @@ public final class ExpenseExcelExporter {
                 // Amount
                 Cell amountCell = row.createCell(0);
                 if (expense.amount() != null) {
-                    amountCell.setCellValue(expense.amount());
+                    amountCell.setCellValue(expense.amount().doubleValue());
                 }
 
                 // Category name (предполагаю, что у CategoryJpa есть getName())
