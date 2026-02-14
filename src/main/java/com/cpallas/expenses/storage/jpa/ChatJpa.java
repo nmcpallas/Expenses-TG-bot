@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,8 +23,8 @@ public class ChatJpa extends AuditableBaseJpa {
     @EmbeddedId
     private ChatId id;
 
-    @Column(name = "month_limit")
-    private Double monthLimit;
+    @Column(name = "month_limit", precision = 12, scale = 2)
+    private BigDecimal monthLimit;
 
     @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name = "user_id")

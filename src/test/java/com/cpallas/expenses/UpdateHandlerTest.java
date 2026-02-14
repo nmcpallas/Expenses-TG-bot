@@ -28,6 +28,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -237,7 +238,7 @@ public class UpdateHandlerTest {
     @Test
     void checkStatus() throws TelegramApiException {
         Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
-        Mockito.when(expenseService.getStatus(Mockito.any(ChatId.class), Mockito.any(UserId.class))).thenReturn(SpendingStatus.builder().spent(100.0).income(100.0).build());
+        Mockito.when(expenseService.getStatus(Mockito.any(ChatId.class), Mockito.any(UserId.class))).thenReturn(SpendingStatus.builder().spent(new BigDecimal("100.0")).income(new BigDecimal("100.0")).build());
 
         UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
 

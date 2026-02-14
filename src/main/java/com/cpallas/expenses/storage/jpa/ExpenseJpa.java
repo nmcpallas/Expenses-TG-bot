@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 
 @Entity
@@ -19,8 +20,8 @@ public class ExpenseJpa extends AuditableBaseJpa {
     @EmbeddedId
     private ExpenseId id;
 
-    @Column
-    private Double amount;
+    @Column(precision = 12, scale = 2)
+    private BigDecimal amount;
 
     @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name = "chat_id")

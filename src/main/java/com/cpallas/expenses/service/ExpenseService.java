@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -54,8 +55,9 @@ public class ExpenseService {
         Iterable<ExpenseJpa> allExpensesBetween = expenseRepo.findAll(
                 QExpenseJpa.expenseJpa.createdAt.between(now.minusDays(now.getDayOfMonth() - 1), now)
                         .and(QExpenseJpa.expenseJpa.chat.id.eq(chatId)));
-        Double result = StreamSupport.stream(allExpensesBetween.spliterator(), false)
-                .reduce(0.0, (acc, expense) -> acc + expense.getAmount(), Double::sum);
+        BigDecimal result = StreamSupport.stream(allExpensesBetween.spliterator(), false)
+                .map(ExpenseJpa::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return SpendingStatus.builder()
                 .income(chat.getMonthLimit())
@@ -82,10 +84,8 @@ public class ExpenseService {
     @Transactional(rollbackFor = Exception.class)
     public void setOrUpdateLimitation(UserId userId, ChatId chatId, String limitationText) throws WrongFormat {
         try {
-            double limit = Double.parseDouble(limitationText);
-
             ChatJpa chat = getChat(chatId, userId);
-            chat.setMonthLimit(limit);
+            chat.setMonthLimit(new BigDecimal(limitationText));
 
             chatRepo.save(chat);
         } catch (NumberFormatException e) {
@@ -138,7 +138,7 @@ public class ExpenseService {
 
         jpa.setId(chatId);
         jpa.setUser(user);
-        jpa.setMonthLimit(0.0);
+        jpa.setMonthLimit(BigDecimal.ZERO);
 
         return jpa;
     }
