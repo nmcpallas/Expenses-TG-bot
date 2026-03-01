@@ -26,6 +26,9 @@ public class ChatJpa extends AuditableBaseJpa {
     @Column(name = "month_limit", precision = 12, scale = 2)
     private BigDecimal monthLimit;
 
+    @Column(name = "month_start", precision = 12, scale = 2)
+    private Integer monthStart;
+
     @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private UserJpa user;

@@ -236,6 +236,49 @@ public class UpdateHandlerTest {
     }
 
     @Test
+    void saveStartDay() throws TelegramApiException, WrongFormat {
+        Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
+
+        UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
+
+        Update updateToSaveStartDay = new Update();
+        CallbackQuery callbackQuery = new CallbackQuery();
+        callbackQuery.setData(Step.INPUT_START_DAY.name());
+        Message message = new Message();
+        message.setChat(new Chat(1L, "test"));
+        callbackQuery.setMessage(message);
+        callbackQuery.setId("testCallbackQueryId");
+        updateToSaveStartDay.setCallbackQuery(callbackQuery);
+
+        updateHandler.handle(updateToSaveStartDay);
+
+        assertThat(getSendMessage().getFirst().getText())
+                .isEqualTo("Отправьте день начала/окончания месяца");
+
+        Message messageWithStartDay = new Message();
+        messageWithStartDay.setFrom(new User(1L, "test", false));
+        messageWithStartDay.setChat(new Chat(1L, "test"));
+        messageWithStartDay.setText("11");
+        updateToSaveStartDay.setCallbackQuery(null);
+        updateToSaveStartDay.setMessage(messageWithStartDay);
+
+        updateHandler.handle(updateToSaveStartDay);
+
+        Mockito.verify(expenseService, Mockito.times(1)).saveInputStartDay(Mockito.any(UserId.class), Mockito.any(ChatId.class), Mockito.anyString());
+        SendMessage messageFromBot = getSendMessage().get(1);
+        assertThat(messageFromBot.getText())
+                .isEqualTo("День успешно установлен");
+
+        newSessionAfterEachGeneralMenu(updateHandler, () -> {
+            try {
+                return getSendMessage().get(2);
+            } catch (TelegramApiException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
     void checkStatus() throws TelegramApiException {
         Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
         Mockito.when(expenseService.getStatus(Mockito.any(ChatId.class), Mockito.any(UserId.class))).thenReturn(SpendingStatus.builder().spent(new BigDecimal("100.0")).income(new BigDecimal("100.0")).build());

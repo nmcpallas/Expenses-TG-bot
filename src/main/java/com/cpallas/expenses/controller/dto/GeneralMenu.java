@@ -17,6 +17,7 @@ public final class GeneralMenu {
             "Ввести одну трату", Step.SAVING_EXPENSE,
             "Текущий статус по тратам", Step.GETTING_CURRENT_STATUS,
             "Добавить месячное ограничение", Step.ADDING_MONTH_LIMITATION,
+            "Добавить день начала/конца месяца", Step.INPUT_START_DAY,
             "Добавить категорию", Step.CREATING_EXPENSE_CATEGORY,
             "Получить траты в виде excel-файла", Step.DOWNLOAD_EXCEL_FILE
     );

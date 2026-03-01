@@ -81,8 +81,10 @@ public class UpdateHandler {
         switch (session.getStep()) {
             case SAVING_EXPENSE -> waitingForExpense(update, session);
             case GETTING_CURRENT_STATUS -> getCurrentStatus(update, session);
+            case INPUT_START_DAY -> inputStartDay(update, session);
             case ADDING_MONTH_LIMITATION -> waitingMonthLimitation(update, session);
             case CREATING_EXPENSE_CATEGORY -> waitForCategory(update, session);
+            case WAITING_FOR_INPUT_START_DAY -> saveInputStartDay(update, session);
             case WAITING_FOR_EXPENSE_CATEGORY_NAME -> addingCategory(update, session);
             case WAITING_FOR_EXPENSE_AMOUNT -> addingExpenseAmount(update, session);
             case WAITING_FOR_EXPENSE_CATEGORY -> addingExpenseCategory(update, session);
@@ -166,6 +168,26 @@ public class UpdateHandler {
         SendMessage message = createMessage(status, getChatIdFromUpdate(update));
         message.setReplyMarkup(backToMenuMarkup());
         telegramClient.execute(message);
+    }
+
+    private void inputStartDay(Update update, UserSession session) throws TelegramApiException {
+        session.setStep(Step.WAITING_FOR_INPUT_START_DAY);
+        telegramClient.execute(createMessage("Отправьте день начала/окончания месяца", getChatIdFromUpdate(update)));
+    }
+
+    private void saveInputStartDay(Update update, UserSession session) throws TelegramApiException {
+        try {
+            expenseService.saveInputStartDay(getUserIdFromUpdate(update),
+                    new ChatId(getChatIdFromUpdate(update)),
+                    update.getMessage().getText());
+            session.setStep(Step.DONE);
+            SendMessage message = createMessage("День успешно установлен", getChatIdFromUpdate(update));
+            message.setReplyMarkup(backToMenuMarkup());
+            telegramClient.execute(message);
+        } catch (WrongFormat e) {
+            telegramClient.execute(createMessage("Ошибка в формате суммы ограничения. Используйте, пожалуйста, только цифры. Попробуйте еще раз",
+                    getChatIdFromUpdate(update)));
+        }
     }
 
     private void waitForCategory(Update update, UserSession session) throws TelegramApiException {
