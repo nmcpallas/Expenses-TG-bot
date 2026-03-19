@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -54,18 +55,37 @@ public class ExpenseService {
         ZonedDateTime now = ZonedDateTime.now();
         ChatJpa chat = getChat(chatId, userId);
 
-        ZonedDateTime from = ZonedDateTime.of(LocalDateTime.of(now.getYear(), now.getMonth().minus(1L), chat.getMonthStart(), 0, 0, 0), now.getZone());
-        ZonedDateTime to = ZonedDateTime.of(LocalDateTime.of(now.getYear(), now.getMonth(), chat.getMonthStart(), 23, 59, 59), now.getZone());
-        Iterable<ExpenseJpa> allExpensesBetween = expenseRepo.findAll(
+        int monthStartDay = chat.getMonthStart();
+
+        LocalDate today = now.toLocalDate();
+        ZoneId zone = now.getZone();
+
+        LocalDate periodStartDate;
+        LocalDate periodEndDate;
+
+        if (today.getDayOfMonth() >= monthStartDay) {
+            periodStartDate = today.withDayOfMonth(monthStartDay);
+            periodEndDate = periodStartDate.plusMonths(1);
+        } else {
+            periodEndDate = today.withDayOfMonth(monthStartDay);
+            periodStartDate = periodEndDate.minusMonths(1);
+        }
+
+        ZonedDateTime from = periodStartDate.atStartOfDay(zone);
+        ZonedDateTime to = periodEndDate.atStartOfDay(zone).minusNanos(1);
+
+        Iterable<ExpenseJpa> expenses = expenseRepo.findAll(
                 QExpenseJpa.expenseJpa.createdAt.between(from, to)
-                        .and(QExpenseJpa.expenseJpa.chat.id.eq(chatId)));
-        BigDecimal result = StreamSupport.stream(allExpensesBetween.spliterator(), false)
+                        .and(QExpenseJpa.expenseJpa.chat.id.eq(chatId))
+        );
+
+        BigDecimal spent = StreamSupport.stream(expenses.spliterator(), false)
                 .map(ExpenseJpa::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return SpendingStatus.builder()
                 .income(chat.getMonthLimit())
-                .spent(result)
+                .spent(spent)
                 .build();
     }
 
