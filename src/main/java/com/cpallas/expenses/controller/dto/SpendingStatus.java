@@ -18,7 +18,7 @@ public record SpendingStatus(BigDecimal spent,
         spedingByCategories.entrySet().stream()
                 .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
                 .forEach(entry ->
-                        sb.append("%s: %.1f\n".formatted(entry.getKey(), entry.getValue()))
+                        sb.append(String.format(Locale.FRANCE, "%s: %.1f\n", entry.getKey(), entry.getValue()))
                 );
 
         return sb.toString();
