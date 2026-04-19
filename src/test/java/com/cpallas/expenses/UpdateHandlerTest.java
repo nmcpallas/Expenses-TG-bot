@@ -298,7 +298,7 @@ public class UpdateHandlerTest {
         updateHandler.handle(updateToGetStatus);
 
         assertThat(getSendMessage().getFirst().getText())
-                .isEqualTo("Потрачено: 100,0 Сумма трат на месяц: 100,0, Остаток в этом месяце: 0,0\n" +
+                .isEqualTo("Месячное ограничение: 100,0 Потрачено на данный момент: 100,0, Остаток в этом месяце: 0,0\n" +
                         "test2: 2,0\n" +
                         "test1: 1,0\n");
 
