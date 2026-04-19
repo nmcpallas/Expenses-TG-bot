@@ -281,7 +281,7 @@ public class UpdateHandlerTest {
     @Test
     void checkStatus() throws TelegramApiException {
         Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
-        Mockito.when(expenseService.getStatus(Mockito.any(ChatId.class), Mockito.any(UserId.class))).thenReturn(SpendingStatus.builder().spent(new BigDecimal("100.0")).income(new BigDecimal("100.0")).build());
+        Mockito.when(expenseService.getStatus(Mockito.any(ChatId.class), Mockito.any(UserId.class))).thenReturn(new SpendingStatus(new BigDecimal("100.0"), new BigDecimal("100.0"), Map.of("test1", new BigDecimal(1), "test2", new BigDecimal(2))));
 
         UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
 
@@ -298,7 +298,9 @@ public class UpdateHandlerTest {
         updateHandler.handle(updateToGetStatus);
 
         assertThat(getSendMessage().getFirst().getText())
-                .isEqualTo("Потрачено: 100,0 Сумма трат на месяц: 100,0, Остаток в этом месяце: 0,0");
+                .isEqualTo("Потрачено: 100,0 Сумма трат на месяц: 100,0, Остаток в этом месяце: 0,0\n" +
+                        "test2: 2,0\n" +
+                        "test1: 1,0\n");
 
         newSessionAfterEachGeneralMenu(updateHandler, () -> {
             try {
