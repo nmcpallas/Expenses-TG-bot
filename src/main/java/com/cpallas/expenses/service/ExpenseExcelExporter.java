@@ -6,8 +6,11 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public final class ExpenseExcelExporter {
 
@@ -20,54 +23,31 @@ public final class ExpenseExcelExporter {
 
             Sheet sheet = workbook.createSheet("Expenses");
 
-            // --- 1. Header row ---
             Row headerRow = sheet.createRow(0);
-
             CellStyle headerStyle = workbook.createCellStyle();
             Font headerFont = workbook.createFont();
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
 
-            String[] headers = {"Amount", "Category", "Description", "Created At"};
+            String[] headers = {"Сумма траты", "Категория", "Описание траты", "Дата записи"};
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
             }
 
-            // --- 2. Data rows ---
-            int rowIdx = 1;
+            int nextRowIdx = 1;
             for (ExpenseExportRow expense : expenses) {
-                Row row = sheet.createRow(rowIdx++);
+                Row row = sheet.createRow(nextRowIdx++);
 
-                // Amount
-                Cell amountCell = row.createCell(0);
-                if (expense.amount() != null) {
-                    amountCell.setCellValue(expense.amount().doubleValue());
-                }
-
-                // Category name (предполагаю, что у CategoryJpa есть getName())
-                String categoryName = expense.categoryName();
-                if (expense.categoryName() != null) {
-                    // поправь на реально существующий геттер, если он другой
-                    categoryName = expense.categoryName();
-                }
-                row.createCell(1).setCellValue(categoryName != null ? categoryName : "");
-
-                // Description
-                row.createCell(2).setCellValue(
-                        expense.description() != null ? expense.description() : ""
-                );
-
-                // Created At (как строка)
-                String createdAtStr = "";
-                if (expense.createdAt() != null) {
-                    createdAtStr = expense.createdAt().format(DATE_TIME_FORMATTER);
-                }
-                row.createCell(3).setCellValue(createdAtStr);
+                row.createCell(0).setCellValue(expense.amount().doubleValue());
+                row.createCell(1).setCellValue(expense.categoryName());
+                row.createCell(2).setCellValue(expense.description());
+                row.createCell(3).setCellValue(expense.createdAt().format(DATE_TIME_FORMATTER));
             }
+            sheet.createRow(nextRowIdx++); //empty row
+            summarizeByCategories(expenses, sheet, nextRowIdx);
 
-            // --- 3. Auto-size columns ---
             for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
             }
@@ -76,6 +56,24 @@ public final class ExpenseExcelExporter {
             return out.toByteArray();
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private static void summarizeByCategories(List<ExpenseExportRow> expenses, Sheet sheet, int nextRowIdx) {
+        Map<String, BigDecimal> result = expenses.stream()
+                .collect(Collectors.groupingBy(
+                        ExpenseExportRow::categoryName,
+                        Collectors.reducing(
+                                BigDecimal.ZERO,
+                                ExpenseExportRow::amount,
+                                BigDecimal::add
+                        )
+                ));
+
+        for (Map.Entry<String, BigDecimal> entry : result.entrySet()) {
+            Row row = sheet.createRow(nextRowIdx++);
+            row.createCell(0).setCellValue(entry.getKey());
+            row.createCell(1).setCellValue(entry.getValue().doubleValue());
         }
     }
 }

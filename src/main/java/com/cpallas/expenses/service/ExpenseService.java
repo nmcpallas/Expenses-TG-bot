@@ -23,8 +23,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 @Service
@@ -83,10 +83,19 @@ public class ExpenseService {
                 .map(ExpenseJpa::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        return SpendingStatus.builder()
-                .income(chat.getMonthLimit())
-                .spent(spent)
-                .build();
+        Map<String, BigDecimal> expensesByCategory = StreamSupport.stream(expenses.spliterator(), false)
+                .collect(Collectors.groupingBy(
+                        $ -> $.getCategory().getName(),
+                        Collectors.reducing(
+                                BigDecimal.ZERO,
+                                ExpenseJpa::getAmount,
+                                BigDecimal::add
+                        )
+                ));
+
+        return new SpendingStatus(chat.getMonthLimit(),
+                spent,
+                expensesByCategory);
     }
 
     @Transactional(readOnly = true)
