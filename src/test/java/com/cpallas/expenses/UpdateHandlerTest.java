@@ -2,8 +2,10 @@ package com.cpallas.expenses;
 
 import com.cpallas.expenses.controller.dto.SpendingStatus;
 import com.cpallas.expenses.controller.handler.UpdateHandler;
+import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.exception.WrongFormat;
 import com.cpallas.expenses.service.ExpenseService;
+import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
 import com.cpallas.expenses.storage.ids.CategoryId;
 import com.cpallas.expenses.storage.ids.ChatId;
 import com.cpallas.expenses.storage.ids.UserId;
@@ -49,6 +51,8 @@ public class UpdateHandlerTest {
     private TelegramClient telegramClient;
     @Mock
     private ExpenseService expenseService;
+    @Mock
+    private QuickExpenseFlowService quickExpenseFlowService;
 
     //ввести трату без категорий -> ввести категорию -> категория сохранилась
     @Test
@@ -56,7 +60,7 @@ public class UpdateHandlerTest {
         Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
         Mockito.when(expenseService.getCategories(Mockito.any())).thenReturn(Collections.emptyList());
 
-        UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
+        UpdateHandler updateHandler = newHandler();
 
         Update updateToSaveExpense = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
@@ -128,7 +132,7 @@ public class UpdateHandlerTest {
         category.setId(new CategoryId(UUID.randomUUID()));
         Mockito.when(expenseService.getCategories(Mockito.any())).thenReturn(List.of(category));
 
-        UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
+        UpdateHandler updateHandler = newHandler();
 
         Update updateToSaveExpense = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
@@ -196,7 +200,7 @@ public class UpdateHandlerTest {
     void saveLimitation() throws TelegramApiException, WrongFormat {
         Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
 
-        UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
+        UpdateHandler updateHandler = newHandler();
 
         Update updateToSaveLimitation = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
@@ -239,7 +243,7 @@ public class UpdateHandlerTest {
     void saveStartDay() throws TelegramApiException, WrongFormat {
         Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
 
-        UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
+        UpdateHandler updateHandler = newHandler();
 
         Update updateToSaveStartDay = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
@@ -283,7 +287,7 @@ public class UpdateHandlerTest {
         Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
         Mockito.when(expenseService.getStatus(Mockito.any(ChatId.class), Mockito.any(UserId.class))).thenReturn(new SpendingStatus(new BigDecimal("100.0"), new BigDecimal("100.0"), Map.of("test1", new BigDecimal(1), "test2", new BigDecimal(2))));
 
-        UpdateHandler updateHandler = new UpdateHandler(telegramClient, expenseService);
+        UpdateHandler updateHandler = newHandler();
 
         Update updateToGetStatus = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
@@ -322,6 +326,10 @@ public class UpdateHandlerTest {
         assertThat(kvGeneralMenu.get(Step.ADDING_MONTH_LIMITATION.name())).isEqualTo("Добавить месячное ограничение");
         assertThat(kvGeneralMenu.get(Step.CREATING_EXPENSE_CATEGORY.name())).isEqualTo("Добавить категорию");
         assertThat(kvGeneralMenu.get(Step.DOWNLOAD_EXCEL_FILE.name())).isEqualTo("Получить траты в виде excel-файла");
+    }
+
+    private UpdateHandler newHandler() {
+        return new UpdateHandler(telegramClient, expenseService, quickExpenseFlowService);
     }
 
     private Update getNewMessage() {

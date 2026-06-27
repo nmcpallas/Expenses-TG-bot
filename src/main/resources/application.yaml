@@ -26,3 +26,10 @@ telegram:
 system:
   dispatcher-capacity: ${DISPATCHER-CAPACITY:100}
   chat-blocking-duration: ${CHAT_BLOCKING_DURATION:1000}
+
+expense:
+  ml:
+    enabled: ${EXPENSE_ML_ENABLED:true}
+    host: ${EXPENSE_ML_HOST:localhost}
+    port: ${EXPENSE_ML_PORT:50051}
+    deadline-ms: ${EXPENSE_ML_DEADLINE_MS:1500}

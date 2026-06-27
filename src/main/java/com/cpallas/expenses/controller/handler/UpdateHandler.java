@@ -1,6 +1,6 @@
 package com.cpallas.expenses.controller.handler;
 
-import com.cpallas.expenses.Step;
+import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.UserSession;
 import com.cpallas.expenses.controller.dto.CalendarMenu;
 import com.cpallas.expenses.controller.dto.CategoryMenu;
@@ -8,6 +8,7 @@ import com.cpallas.expenses.controller.dto.GeneralMenu;
 import com.cpallas.expenses.controller.dto.Month;
 import com.cpallas.expenses.exception.WrongFormat;
 import com.cpallas.expenses.service.ExpenseExcelExporter;
+import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
 import com.cpallas.expenses.storage.ids.CategoryId;
 import com.cpallas.expenses.storage.ids.ChatId;
 import com.cpallas.expenses.storage.ids.UserId;
@@ -43,6 +44,7 @@ public class UpdateHandler {
 
     private final TelegramClient telegramClient;
     private final ExpenseService expenseService;
+    private final QuickExpenseFlowService quickExpenseFlowService;
     private final Cache<Long, UserSession> sessions = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofMinutes(10))
             .maximumSize(1_000)
@@ -50,9 +52,12 @@ public class UpdateHandler {
     private static final InlineKeyboardMarkup generalMenuMarkup = GeneralMenu.init();
     private static final InlineKeyboardMarkup calendarMenuMarkup = CalendarMenu.init();
 
-    public UpdateHandler(TelegramClient telegramClient, ExpenseService expenseService) {
+    public UpdateHandler(TelegramClient telegramClient,
+                         ExpenseService expenseService,
+                         QuickExpenseFlowService quickExpenseFlowService) {
         this.telegramClient = telegramClient;
         this.expenseService = expenseService;
+        this.quickExpenseFlowService = quickExpenseFlowService;
     }
 
     public void handle(Update update) throws TelegramApiException {
@@ -61,6 +66,14 @@ public class UpdateHandler {
             if (oSession.isPresent()) {
                 continueProcess(update, oSession.get());
             } else if (update.hasMessage() && update.getMessage().hasText()) {
+                UserSession quickSession = getOrCreateSession(getChatIdFromUpdate(update));
+                if (quickExpenseFlowService.tryStartQuickExpense(update, quickSession)) {
+                    if (quickSession.getStep() == null || quickSession.getStep().equals(Step.DONE)) {
+                        removeSession(getChatIdFromUpdate(update));
+                    }
+                    return;
+                }
+                removeSession(getChatIdFromUpdate(update));
                 telegramClient.execute(sendGeneralMenu(update));
             } else if (update.hasCallbackQuery()) {
                 UserSession newSession = getOrCreateSession(getChatIdFromUpdate(update));
@@ -88,6 +101,8 @@ public class UpdateHandler {
             case WAITING_FOR_EXPENSE_CATEGORY_NAME -> addingCategory(update, session);
             case WAITING_FOR_EXPENSE_AMOUNT -> addingExpenseAmount(update, session);
             case WAITING_FOR_EXPENSE_CATEGORY -> addingExpenseCategory(update, session);
+            case WAITING_FOR_QUICK_EXPENSE_CATEGORY, WAITING_FOR_QUICK_EXPENSE_CATEGORY_NAME ->
+                    quickExpenseFlowService.continueQuickExpense(update, session);
             case WAITING_FOR_EXPENSE_DESCRIPTION -> addingExpenseDescription(update, session);
             case WAITING_FOR_MONTH_LIMITATION -> addingMonthLimitation(update, session);
             case DOWNLOAD_EXCEL_FILE -> downloadExcelFile(update, session);

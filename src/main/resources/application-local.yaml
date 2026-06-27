@@ -26,3 +26,10 @@ telegram:
 system:
   dispatcher-capacity: 100
   chat-blocking-duration: 1000
+
+expense:
+  ml:
+    enabled: true
+    host: localhost
+    port: 50051
+    deadline-ms: 1500

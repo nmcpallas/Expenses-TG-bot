@@ -1,5 +1,6 @@
 package com.cpallas.expenses;
 
+import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.storage.ids.CategoryId;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -13,6 +14,7 @@ import java.math.BigDecimal;
 public class UserSession {
 
     private Step step;
+    private String rawText;
     private String description;
     private BigDecimal amount;
     private CategoryId categoryId;

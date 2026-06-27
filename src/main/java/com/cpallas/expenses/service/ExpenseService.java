@@ -104,14 +104,14 @@ public class ExpenseService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void createCategory(ChatId chatId, UserId userId, String name) {
+    public CategoryJpa createCategory(ChatId chatId, UserId userId, String name) {
         CategoryJpa entity = new CategoryJpa();
 
         entity.setId(new CategoryId(UUID.randomUUID()));
         entity.setChat(getChat(chatId, userId));
         entity.setName(name);
 
-        categoryRepo.save(entity);
+        return categoryRepo.save(entity);
     }
 
     @Transactional(rollbackFor = Exception.class)

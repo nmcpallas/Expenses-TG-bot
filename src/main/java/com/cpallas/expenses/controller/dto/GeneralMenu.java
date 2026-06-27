@@ -1,6 +1,6 @@
 package com.cpallas.expenses.controller.dto;
 
-import com.cpallas.expenses.Step;
+import com.cpallas.expenses.enums.Step;
 import lombok.NoArgsConstructor;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
