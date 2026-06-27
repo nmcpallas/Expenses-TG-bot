@@ -5,6 +5,14 @@ import com.cpallas.expenses.controller.handler.UpdateHandler;
 import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.exception.WrongFormat;
 import com.cpallas.expenses.service.ExpenseService;
+import com.cpallas.expenses.service.flow.AddCategoryFlowService;
+import com.cpallas.expenses.service.flow.AddExpenseFlowService;
+import com.cpallas.expenses.service.flow.ExcelExportFlowService;
+import com.cpallas.expenses.service.flow.FlowTypeResolver;
+import com.cpallas.expenses.service.flow.MonthLimitFlowService;
+import com.cpallas.expenses.service.flow.MonthStartDayFlowService;
+import com.cpallas.expenses.service.flow.StatusFlowService;
+import com.cpallas.expenses.service.flow.FlowDispatcher;
 import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
 import com.cpallas.expenses.storage.ids.CategoryId;
 import com.cpallas.expenses.storage.ids.ChatId;
@@ -64,7 +72,7 @@ public class UpdateHandlerTest {
 
         Update updateToSaveExpense = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.SAVING_EXPENSE.name());
+        callbackQuery.setData(Step.START_ADD_EXPENSE.name());
         Message message = new Message();
         message.setChat(new Chat(1L, "test"));
         callbackQuery.setMessage(message);
@@ -90,9 +98,9 @@ public class UpdateHandlerTest {
                 .isEqualTo("У вас нет добавленных категорий. Создайте, пожалуйста, категорию и после заново введите трату");
         InlineKeyboardMarkup replyMarkup = (InlineKeyboardMarkup) messageFromBot.getReplyMarkup();
         assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getText()).isEqualTo("Добавить категорию");
-        assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getCallbackData()).isEqualTo(Step.CREATING_EXPENSE_CATEGORY.name());
+        assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getCallbackData()).isEqualTo(Step.START_ADD_CATEGORY.name());
 
-        callbackQuery.setData(Step.CREATING_EXPENSE_CATEGORY.name());
+        callbackQuery.setData(Step.START_ADD_CATEGORY.name());
         updateToSaveExpense.setCallbackQuery(callbackQuery);
 
         updateHandler.handle(updateToSaveExpense);
@@ -136,7 +144,7 @@ public class UpdateHandlerTest {
 
         Update updateToSaveExpense = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.SAVING_EXPENSE.name());
+        callbackQuery.setData(Step.START_ADD_EXPENSE.name());
         Message message = new Message();
         message.setChat(new Chat(1L, "test"));
         callbackQuery.setMessage(message);
@@ -164,7 +172,7 @@ public class UpdateHandlerTest {
         assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getText()).isEqualTo(category.getName());
         assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getCallbackData()).isEqualTo(category.getId().getId().toString());
         assertThat(replyMarkup.getKeyboard().get(1).getFirst().getText()).isEqualTo("Добавить категорию");
-        assertThat(replyMarkup.getKeyboard().get(1).getFirst().getCallbackData()).isEqualTo(Step.CREATING_EXPENSE_CATEGORY.name());
+        assertThat(replyMarkup.getKeyboard().get(1).getFirst().getCallbackData()).isEqualTo(Step.START_ADD_CATEGORY.name());
 
         callbackQuery.setData(category.getId().getId().toString());
         updateToSaveExpense.setCallbackQuery(callbackQuery);
@@ -204,7 +212,7 @@ public class UpdateHandlerTest {
 
         Update updateToSaveLimitation = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.ADDING_MONTH_LIMITATION.name());
+        callbackQuery.setData(Step.START_SET_MONTH_LIMIT.name());
         Message message = new Message();
         message.setChat(new Chat(1L, "test"));
         callbackQuery.setMessage(message);
@@ -247,7 +255,7 @@ public class UpdateHandlerTest {
 
         Update updateToSaveStartDay = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.INPUT_START_DAY.name());
+        callbackQuery.setData(Step.START_SET_MONTH_START_DAY.name());
         Message message = new Message();
         message.setChat(new Chat(1L, "test"));
         callbackQuery.setMessage(message);
@@ -291,7 +299,7 @@ public class UpdateHandlerTest {
 
         Update updateToGetStatus = new Update();
         CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.GETTING_CURRENT_STATUS.name());
+        callbackQuery.setData(Step.SHOW_CURRENT_STATUS.name());
         Message message = new Message();
         message.setChat(new Chat(1L, "test"));
         callbackQuery.setFrom(new User(1L, "test", false));
@@ -321,15 +329,31 @@ public class UpdateHandlerTest {
         Assertions.assertThat(initMessage.getText()).isEqualTo("Выберите дальнейшее действие");
         InlineKeyboardMarkup replyMarkup = (InlineKeyboardMarkup) initMessage.getReplyMarkup();
         Map<String, String> kvGeneralMenu = replyMarkup.getKeyboard().stream().collect(Collectors.toMap($ -> $.getFirst().getCallbackData(), $ -> $.getFirst().getText()));
-        assertThat(kvGeneralMenu.get(Step.SAVING_EXPENSE.name())).isEqualTo("Ввести одну трату");
-        assertThat(kvGeneralMenu.get(Step.GETTING_CURRENT_STATUS.name())).isEqualTo("Текущий статус по тратам");
-        assertThat(kvGeneralMenu.get(Step.ADDING_MONTH_LIMITATION.name())).isEqualTo("Добавить месячное ограничение");
-        assertThat(kvGeneralMenu.get(Step.CREATING_EXPENSE_CATEGORY.name())).isEqualTo("Добавить категорию");
-        assertThat(kvGeneralMenu.get(Step.DOWNLOAD_EXCEL_FILE.name())).isEqualTo("Получить траты в виде excel-файла");
+        assertThat(kvGeneralMenu.get(Step.START_ADD_EXPENSE.name())).isEqualTo("Ввести одну трату");
+        assertThat(kvGeneralMenu.get(Step.SHOW_CURRENT_STATUS.name())).isEqualTo("Текущий статус по тратам");
+        assertThat(kvGeneralMenu.get(Step.START_SET_MONTH_LIMIT.name())).isEqualTo("Добавить месячное ограничение");
+        assertThat(kvGeneralMenu.get(Step.START_ADD_CATEGORY.name())).isEqualTo("Добавить категорию");
+        assertThat(kvGeneralMenu.get(Step.START_DOWNLOAD_EXCEL.name())).isEqualTo("Получить траты в виде excel-файла");
     }
 
     private UpdateHandler newHandler() {
-        return new UpdateHandler(telegramClient, expenseService, quickExpenseFlowService);
+        FlowDispatcher flowDispatcher = new FlowDispatcher(
+                telegramClient,
+                new AddCategoryFlowService(telegramClient, expenseService),
+                new AddExpenseFlowService(telegramClient, expenseService),
+                new ExcelExportFlowService(telegramClient, expenseService),
+                new MonthLimitFlowService(telegramClient, expenseService),
+                new MonthStartDayFlowService(telegramClient, expenseService),
+                new StatusFlowService(telegramClient, expenseService),
+                quickExpenseFlowService,
+                new FlowTypeResolver()
+        );
+        return new UpdateHandler(
+                telegramClient,
+                quickExpenseFlowService,
+                flowDispatcher,
+                new FlowTypeResolver()
+        );
     }
 
     private Update getNewMessage() {

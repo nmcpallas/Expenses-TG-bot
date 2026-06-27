@@ -15,6 +15,7 @@ import com.cpallas.expenses.storage.jpa.CategoryJpa;
 import io.grpc.StatusRuntimeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
+@ConditionalOnProperty(prefix = "expense.ml", name = "mock-enabled", havingValue = "false", matchIfMissing = true)
 @RequiredArgsConstructor
 public class GrpcExpenseMlClient implements ExpenseMlClient {
 

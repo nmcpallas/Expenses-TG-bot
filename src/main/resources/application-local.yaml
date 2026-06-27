@@ -30,6 +30,7 @@ system:
 expense:
   ml:
     enabled: true
+    mock-enabled: false
     host: localhost
     port: 50051
     deadline-ms: 1500

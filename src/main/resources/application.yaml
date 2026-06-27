@@ -30,6 +30,7 @@ system:
 expense:
   ml:
     enabled: ${EXPENSE_ML_ENABLED:true}
+    mock-enabled: ${EXPENSE_ML_MOCK_ENABLED:false}
     host: ${EXPENSE_ML_HOST:localhost}
     port: ${EXPENSE_ML_PORT:50051}
     deadline-ms: ${EXPENSE_ML_DEADLINE_MS:1500}

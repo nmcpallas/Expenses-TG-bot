@@ -1,5 +1,6 @@
 package com.cpallas.expenses.service.ml;
 
+import com.cpallas.expenses.enums.FlowType;
 import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.UserSession;
 import com.cpallas.expenses.controller.dto.CategoryMenu;
@@ -74,7 +75,8 @@ public class QuickExpenseFlowService {
             return true;
         }
 
-        session.setStep(Step.WAITING_FOR_QUICK_EXPENSE_CATEGORY);
+        session.setStep(Step.AWAITING_QUICK_EXPENSE_CATEGORY);
+        session.setFlow(FlowType.QUICK_EXPENSE);
         session.setRawText(quickExpense.get().rawText());
         session.setAmount(quickExpense.get().amount());
         session.setDescription(quickExpense.get().description());
@@ -89,11 +91,11 @@ public class QuickExpenseFlowService {
     }
 
     public void continueQuickExpense(Update update, UserSession session) throws TelegramApiException {
-        if (session.getStep() == Step.WAITING_FOR_QUICK_EXPENSE_CATEGORY) {
+        if (session.getStep() == Step.AWAITING_QUICK_EXPENSE_CATEGORY) {
             addQuickExpenseCategory(update, session);
             return;
         }
-        if (session.getStep() == Step.WAITING_FOR_QUICK_EXPENSE_CATEGORY_NAME) {
+        if (session.getStep() == Step.AWAITING_QUICK_EXPENSE_CATEGORY_NAME) {
             addQuickExpenseCategoryName(update, session);
         }
     }
@@ -118,7 +120,8 @@ public class QuickExpenseFlowService {
             return;
         }
         if (QUICK_CUSTOM_CATEGORY_CALLBACK.equals(update.getCallbackQuery().getData())) {
-            session.setStep(Step.WAITING_FOR_QUICK_EXPENSE_CATEGORY_NAME);
+            session.setStep(Step.AWAITING_QUICK_EXPENSE_CATEGORY_NAME);
+            session.setFlow(FlowType.QUICK_EXPENSE);
             telegramClient.execute(createMessage("Введите название категории", getChatIdFromUpdate(update)));
             return;
         }
@@ -144,6 +147,7 @@ public class QuickExpenseFlowService {
                 session
         );
         session.setStep(Step.DONE);
+        session.setFlow(FlowType.QUICK_EXPENSE);
         telegramClient.execute(createMessage(
                 "Трата сохранена: %s · %s · %s".formatted(session.getAmount(), categoryName, session.getDescription()),
                 getChatIdFromUpdate(update)
