@@ -49,12 +49,14 @@ class QuickExpenseFlowServiceTest {
     private ExpenseService expenseService;
     @Mock
     private ExpenseMlClient expenseMlClient;
+    @Mock
+    private QuickExpenseEligibilityService quickExpenseEligibilityService;
 
     private QuickExpenseFlowService service;
 
     @BeforeEach
     void setUp() {
-        service = new QuickExpenseFlowService(telegramClient, expenseService, expenseMlClient);
+        service = new QuickExpenseFlowService(telegramClient, expenseService, expenseMlClient, quickExpenseEligibilityService);
     }
 
     @Test
@@ -86,6 +88,8 @@ class QuickExpenseFlowServiceTest {
     void savesExpenseImmediatelyWhenPredictionIsAccepted() throws TelegramApiException {
         CategoryJpa category = category("Кофе");
         when(expenseService.getCategories(eq(new ChatId(CHAT_ID)))).thenReturn(List.of(category));
+        when(quickExpenseEligibilityService.resolveMode(eq(new ChatId(CHAT_ID)), eq(1)))
+                .thenReturn(QuickExpenseMode.AUTO_SAVE_ALLOWED);
         when(expenseMlClient.predict(eq(new ChatId(CHAT_ID)), any(QuickExpense.class), eq(List.of(category))))
                 .thenReturn(new ExpenseCategoryPrediction(category.getId(), "Кофе", 0.95, false, List.of()));
 
@@ -104,6 +108,8 @@ class QuickExpenseFlowServiceTest {
     void startsReviewFlowWhenPredictionNeedsReview() throws TelegramApiException {
         CategoryJpa category = category("Кофе");
         when(expenseService.getCategories(eq(new ChatId(CHAT_ID)))).thenReturn(List.of(category));
+        when(quickExpenseEligibilityService.resolveMode(eq(new ChatId(CHAT_ID)), eq(1)))
+                .thenReturn(QuickExpenseMode.AUTO_SAVE_ALLOWED);
         when(expenseMlClient.predict(eq(new ChatId(CHAT_ID)), any(QuickExpense.class), eq(List.of(category))))
                 .thenReturn(ExpenseCategoryPrediction.reviewOnly(List.of(
                         new ExpensePredictionAlternative(category.getId(), "Кофе", 0.55)
@@ -124,6 +130,41 @@ class QuickExpenseFlowServiceTest {
         InlineKeyboardMarkup replyMarkup = (InlineKeyboardMarkup) message.getReplyMarkup();
         assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getText()).isEqualTo("Кофе (55%)");
         assertThat(replyMarkup.getKeyboard().get(1).getFirst().getText()).isEqualTo("Ввести свою категорию");
+    }
+
+    @Test
+    void doesNotStartQuickFlowWhenModeIsDisabled() throws TelegramApiException {
+        CategoryJpa category = category("Кофе");
+        UserSession session = new UserSession();
+        when(expenseService.getCategories(eq(new ChatId(CHAT_ID)))).thenReturn(List.of(category));
+        when(quickExpenseEligibilityService.resolveMode(eq(new ChatId(CHAT_ID)), eq(1)))
+                .thenReturn(QuickExpenseMode.DISABLED);
+
+        boolean started = service.tryStartQuickExpense(messageUpdate("250 кофе"), session);
+
+        assertThat(started).isFalse();
+        verify(expenseMlClient, never()).predict(any(), any(), any());
+    }
+
+    @Test
+    void reviewOnlyModeDoesNotAutoSaveAcceptedPrediction() throws TelegramApiException {
+        CategoryJpa category = category("Кофе");
+        when(expenseService.getCategories(eq(new ChatId(CHAT_ID)))).thenReturn(List.of(category));
+        when(quickExpenseEligibilityService.resolveMode(eq(new ChatId(CHAT_ID)), eq(1)))
+                .thenReturn(QuickExpenseMode.REVIEW_ONLY);
+        when(expenseMlClient.predict(eq(new ChatId(CHAT_ID)), any(QuickExpense.class), eq(List.of(category))))
+                .thenReturn(new ExpenseCategoryPrediction(category.getId(), "Кофе", 0.95, false, List.of()));
+        UserSession session = new UserSession();
+
+        boolean started = service.tryStartQuickExpense(messageUpdate("250 кофе"), session);
+
+        assertThat(started).isTrue();
+        assertThat(session.getStep()).isEqualTo(Step.AWAITING_QUICK_EXPENSE_CATEGORY);
+        verify(expenseService, never()).addSpending(any(), any(), any());
+
+        SendMessage message = sendMessages(telegramClient).getFirst();
+        InlineKeyboardMarkup replyMarkup = (InlineKeyboardMarkup) message.getReplyMarkup();
+        assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getText()).isEqualTo("Кофе (95%)");
     }
 
     @Test

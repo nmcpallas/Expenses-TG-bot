@@ -81,10 +81,33 @@ Flow:
 text message without active session
     -> QuickExpenseParser.parse(...)
     -> ExpenseService.getCategories(chatId)
+    -> QuickExpenseEligibilityService.resolveMode(...)
     -> ExpenseMlClient.predict(...)
 ```
 
 Если текст не похож на быструю трату, quick-flow не стартует, и бот показывает главное меню.
+
+### Доступность быстрого ввода
+
+Быстрый ввод открывается постепенно и зависит от количества пользовательских данных.
+
+Режимы:
+
+```text
+DISABLED
+REVIEW_ONLY
+AUTO_SAVE_ALLOWED
+```
+
+Правила:
+
+| Условие | Режим | Поведение |
+|---|---|---|
+| меньше 2 категорий или меньше 10 трат | `DISABLED` | quick-flow не стартует |
+| 2+ категории и 10+ трат, но меньше 3 категорий или меньше 30 трат | `REVIEW_ONLY` | бот предлагает категорию, но всегда просит подтверждение |
+| 3+ категории и 30+ трат | `AUTO_SAVE_ALLOWED` | бот может сохранить трату автоматически, если ML уверен |
+
+Если quick-flow отключен, `UpdateHandler` считает текст обычным сообщением без active session и показывает главное меню.
 
 ### Нет категорий
 

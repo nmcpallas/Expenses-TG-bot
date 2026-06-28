@@ -103,6 +103,11 @@ public class ExpenseService {
         return categoryRepo.findAllByChatId(chatId);
     }
 
+    @Transactional(readOnly = true)
+    public long countExpenses(ChatId chatId) {
+        return expenseRepo.count(QExpenseJpa.expenseJpa.chat.id.eq(chatId));
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public CategoryJpa createCategory(ChatId chatId, UserId userId, String name) {
         CategoryJpa entity = new CategoryJpa();
@@ -184,6 +189,7 @@ public class ExpenseService {
         jpa.setId(chatId);
         jpa.setUser(user);
         jpa.setMonthLimit(BigDecimal.ZERO);
+        jpa.setMonthStart(1);
 
         return jpa;
     }

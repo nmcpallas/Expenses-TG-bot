@@ -39,6 +39,7 @@ public class QuickExpenseFlowService {
     private final TelegramClient telegramClient;
     private final ExpenseService expenseService;
     private final ExpenseMlClient expenseMlClient;
+    private final QuickExpenseEligibilityService quickExpenseEligibilityService;
 
     public boolean tryStartQuickExpense(Update update, UserSession session) throws TelegramApiException {
         if (!update.hasMessage() || !update.getMessage().hasText()) {
@@ -60,8 +61,13 @@ public class QuickExpenseFlowService {
             return true;
         }
 
+        QuickExpenseMode quickExpenseMode = quickExpenseEligibilityService.resolveMode(chatId, categories.size());
+        if (quickExpenseMode == QuickExpenseMode.DISABLED) {
+            return false;
+        }
+
         ExpenseCategoryPrediction prediction = expenseMlClient.predict(chatId, quickExpense.get(), categories);
-        if (prediction.acceptedCategoryId().isPresent()) {
+        if (quickExpenseMode == QuickExpenseMode.AUTO_SAVE_ALLOWED && prediction.acceptedCategoryId().isPresent()) {
             UserSession quickSession = newQuickExpenseSession(quickExpense.get(), prediction.acceptedCategoryId().get());
             expenseService.addSpending(getUserIdFromUpdate(update), chatId, quickSession);
             telegramClient.execute(createMessage(
@@ -85,7 +91,7 @@ public class QuickExpenseFlowService {
                 "Не уверен в категории для траты \"%s\". Выберите категорию или введите свою.".formatted(quickExpense.get().description()),
                 getChatIdFromUpdate(update)
         );
-        message.setReplyMarkup(quickCategoryMarkup(prediction.alternatives(), categories));
+        message.setReplyMarkup(quickCategoryMarkup(reviewAlternatives(prediction), categories));
         telegramClient.execute(message);
         return true;
     }
@@ -112,6 +118,19 @@ public class QuickExpenseFlowService {
         }
         keyboard.add(new InlineKeyboardRow(createBtn("Ввести свою категорию", QUICK_CUSTOM_CATEGORY_CALLBACK)));
         return new InlineKeyboardMarkup(keyboard);
+    }
+
+    private List<ExpensePredictionAlternative> reviewAlternatives(ExpenseCategoryPrediction prediction) {
+        if (!prediction.alternatives().isEmpty()) {
+            return prediction.alternatives();
+        }
+        return prediction.acceptedCategoryId()
+                .map(categoryId -> List.of(new ExpensePredictionAlternative(
+                        categoryId,
+                        prediction.categoryName(),
+                        prediction.confidence()
+                )))
+                .orElseGet(List::of);
     }
 
     private void addQuickExpenseCategory(Update update, UserSession session) throws TelegramApiException {
