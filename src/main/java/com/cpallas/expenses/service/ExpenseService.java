@@ -3,14 +3,17 @@ package com.cpallas.expenses.service;
 import com.cpallas.expenses.UserSession;
 import com.cpallas.expenses.controller.dto.Month;
 import com.cpallas.expenses.controller.dto.SpendingStatus;
+import com.cpallas.expenses.enums.ChatRole;
 import com.cpallas.expenses.exception.WrongFormat;
 import com.cpallas.expenses.service.dto.ExpenseExportRow;
 import com.cpallas.expenses.storage.ids.CategoryId;
+import com.cpallas.expenses.storage.ids.ChatMemberId;
 import com.cpallas.expenses.storage.ids.ChatId;
 import com.cpallas.expenses.storage.ids.ExpenseId;
 import com.cpallas.expenses.storage.ids.UserId;
 import com.cpallas.expenses.storage.jpa.*;
 import com.cpallas.expenses.storage.repo.CategoryRepo;
+import com.cpallas.expenses.storage.repo.ChatMemberRepo;
 import com.cpallas.expenses.storage.repo.ChatRepo;
 import com.cpallas.expenses.storage.repo.ExpenseRepo;
 import com.cpallas.expenses.storage.repo.UserRepo;
@@ -35,6 +38,7 @@ public class ExpenseService {
     private final ChatRepo chatRepo;
     private final ExpenseRepo expenseRepo;
     private final CategoryRepo categoryRepo;
+    private final ChatMemberRepo chatMemberRepo;
 
     @Transactional(rollbackFor = Exception.class)
     public void addSpending(UserId userId, ChatId chatId, UserSession userSession) {
@@ -180,7 +184,21 @@ public class ExpenseService {
 
     private ChatJpa getChat(ChatId chatId, UserId userId) {
         return chatRepo.findById(chatId)
-                .orElseGet(() -> chatRepo.save(newChat(chatId, getUser(userId))));
+                .orElseGet(() -> createChatWithOwner(chatId, userId));
+    }
+
+    private ChatJpa createChatWithOwner(ChatId chatId, UserId userId) {
+        UserJpa user = getUser(userId);
+        ChatJpa chat = chatRepo.save(newChat(chatId, user));
+
+        ChatMemberJpa member = new ChatMemberJpa();
+        member.setId(new ChatMemberId(UUID.randomUUID()));
+        member.setChat(chat);
+        member.setUser(user);
+        member.setRole(ChatRole.OWNER);
+        chatMemberRepo.save(member);
+
+        return chat;
     }
 
     private ChatJpa newChat(ChatId chatId, UserJpa user) {
