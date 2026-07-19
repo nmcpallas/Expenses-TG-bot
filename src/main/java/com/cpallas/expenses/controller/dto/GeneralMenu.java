@@ -1,6 +1,6 @@
 package com.cpallas.expenses.controller.dto;
 
-import com.cpallas.expenses.Step;
+import com.cpallas.expenses.enums.Step;
 import lombok.NoArgsConstructor;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
@@ -14,12 +14,12 @@ import static com.cpallas.expenses.controller.util.MessageUtil.createBtn;
 public final class GeneralMenu {
 
     private static final Map<String, Step> kv = Map.of(
-            "Ввести одну трату", Step.SAVING_EXPENSE,
-            "Текущий статус по тратам", Step.GETTING_CURRENT_STATUS,
-            "Добавить месячное ограничение", Step.ADDING_MONTH_LIMITATION,
-            "Добавить день начала/конца месяца", Step.INPUT_START_DAY,
-            "Добавить категорию", Step.CREATING_EXPENSE_CATEGORY,
-            "Получить траты в виде excel-файла", Step.DOWNLOAD_EXCEL_FILE
+            "Ввести одну трату", Step.START_ADD_EXPENSE,
+            "Текущий статус по тратам", Step.SHOW_CURRENT_STATUS,
+            "Добавить месячное ограничение", Step.START_SET_MONTH_LIMIT,
+            "Добавить день начала/конца месяца", Step.START_SET_MONTH_START_DAY,
+            "Добавить категорию", Step.START_ADD_CATEGORY,
+            "Получить траты в виде excel-файла", Step.START_DOWNLOAD_EXCEL
     );
 
     public static InlineKeyboardMarkup init() {

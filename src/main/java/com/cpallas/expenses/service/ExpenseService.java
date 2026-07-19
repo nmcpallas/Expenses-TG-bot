@@ -103,15 +103,20 @@ public class ExpenseService {
         return categoryRepo.findAllByChatId(chatId);
     }
 
+    @Transactional(readOnly = true)
+    public long countExpenses(ChatId chatId) {
+        return expenseRepo.count(QExpenseJpa.expenseJpa.chat.id.eq(chatId));
+    }
+
     @Transactional(rollbackFor = Exception.class)
-    public void createCategory(ChatId chatId, UserId userId, String name) {
+    public CategoryJpa createCategory(ChatId chatId, UserId userId, String name) {
         CategoryJpa entity = new CategoryJpa();
 
         entity.setId(new CategoryId(UUID.randomUUID()));
         entity.setChat(getChat(chatId, userId));
         entity.setName(name);
 
-        categoryRepo.save(entity);
+        return categoryRepo.save(entity);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -184,6 +189,7 @@ public class ExpenseService {
         jpa.setId(chatId);
         jpa.setUser(user);
         jpa.setMonthLimit(BigDecimal.ZERO);
+        jpa.setMonthStart(1);
 
         return jpa;
     }

@@ -5,7 +5,9 @@ import com.cpallas.expenses.controller.TelegramController;
 import com.cpallas.expenses.controller.handler.ChatNotifier;
 import com.cpallas.expenses.controller.handler.UpdateHandler;
 import com.cpallas.expenses.controller.process.ChatUpdateDispatcher;
-import com.cpallas.expenses.service.ExpenseService;
+import com.cpallas.expenses.service.flow.FlowDispatcher;
+import com.cpallas.expenses.service.flow.FlowTypeResolver;
+import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,8 +23,11 @@ public class TelegramConfig {
     }
 
     @Bean
-    public UpdateHandler updateHandler(ExpenseService expenseService, TelegramClient telegramClient) {
-        return new UpdateHandler(telegramClient, expenseService);
+    public UpdateHandler updateHandler(TelegramClient telegramClient,
+                                       QuickExpenseFlowService quickExpenseFlowService,
+                                       FlowDispatcher flowDispatcher,
+                                       FlowTypeResolver flowTypeResolver) {
+        return new UpdateHandler(telegramClient, quickExpenseFlowService, flowDispatcher, flowTypeResolver);
     }
 
     @Bean

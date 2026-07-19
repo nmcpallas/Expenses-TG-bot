@@ -3,6 +3,11 @@ server:
 
 spring:
   application.name: Expenses TG-bot
+  docker:
+    compose:
+      enabled: true
+      file: docker-compose.yml
+      lifecycle-management: start_only
   datasource:
     url: jdbc:postgresql://localhost:5542/tg_budget
     username: test
@@ -20,9 +25,17 @@ spring:
 telegram:
   enabled: true
   bot:
-    username: expenses_statistic_bot
-    token:
+    username: expenses_llocal_bot
+    token: 8976027996:AAFbnkXPTUrTf5DkAnq843MH3YSiRw0a4QQ
 
 system:
   dispatcher-capacity: 100
   chat-blocking-duration: 1000
+
+expense:
+  ml:
+    enabled: true
+    mock-enabled: false
+    host: localhost
+    port: 50051
+    deadline-ms: 1500
