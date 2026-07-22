@@ -323,6 +323,25 @@ public class UpdateHandlerTest {
         });
     }
 
+    @Test
+    void sendsGeneralMenuAfterHandlingError() throws TelegramApiException {
+        UpdateHandler updateHandler = newHandler();
+        Update update = new Update();
+        CallbackQuery callbackQuery = new CallbackQuery();
+        callbackQuery.setData("UNKNOWN_STEP");
+        Message message = new Message();
+        message.setChat(new Chat(1L, "test"));
+        callbackQuery.setMessage(message);
+        update.setCallbackQuery(callbackQuery);
+
+        updateHandler.handle(update);
+
+        List<SendMessage> messages = getSendMessage();
+        assertThat(messages.getFirst().getText()).isEqualTo("Произошла ошибка, попробуйте еще раз");
+        assertThat(messages.getLast().getText()).isEqualTo("Выберите дальнейшее действие");
+        assertThat(messages.getLast().getReplyMarkup()).isNotNull();
+    }
+
     private void newSessionAfterEachGeneralMenu(UpdateHandler updateHandler, Supplier<SendMessage> initMessageSup) throws TelegramApiException {
         updateHandler.handle(getNewMessage());
         SendMessage initMessage = initMessageSup.get();

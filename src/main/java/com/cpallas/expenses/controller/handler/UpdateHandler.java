@@ -62,6 +62,7 @@ public class UpdateHandler {
             log.error("Error handling update", e);
             removeSession(chatId);
             telegramClient.execute(createMessage("Произошла ошибка, попробуйте еще раз", chatId));
+            telegramClient.execute(sendGeneralMenu(update));
         }
     }
 

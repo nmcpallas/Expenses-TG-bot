@@ -4,6 +4,7 @@ import com.cpallas.expenses.enums.FlowType;
 import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.UserSession;
 import com.cpallas.expenses.controller.dto.CategoryMenu;
+import com.cpallas.expenses.controller.dto.GeneralMenu;
 import com.cpallas.expenses.service.ExpenseService;
 import com.cpallas.expenses.service.dto.ExpenseCategoryPrediction;
 import com.cpallas.expenses.service.dto.ExpensePredictionAlternative;
@@ -78,6 +79,7 @@ public class QuickExpenseFlowService {
                     ),
                     getChatIdFromUpdate(update)
             ));
+            telegramClient.execute(GeneralMenu.createMenuMessage(getChatIdFromUpdate(update)));
             return true;
         }
 
@@ -171,6 +173,7 @@ public class QuickExpenseFlowService {
                 "Трата сохранена: %s · %s · %s".formatted(session.getAmount(), categoryName, session.getDescription()),
                 getChatIdFromUpdate(update)
         ));
+        telegramClient.execute(GeneralMenu.createMenuMessage(getChatIdFromUpdate(update)));
     }
 
     private UserSession newQuickExpenseSession(QuickExpense quickExpense, CategoryId categoryId) {
