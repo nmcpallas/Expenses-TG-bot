@@ -2,6 +2,7 @@ package com.cpallas.expenses.controller.process;
 
 import com.cpallas.expenses.controller.handler.ChatNotifier;
 import com.cpallas.expenses.controller.handler.UpdateHandler;
+import com.cpallas.expenses.observability.TraceContext;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -85,7 +86,7 @@ public class ChatUpdateDispatcher implements AutoCloseable {
     }
 
     private void safeHandle(Update update) {
-        try {
+        try (TraceContext.TraceScope ignored = TraceContext.open()) {
             updateHandler.handle(update);
         } catch (Exception e) {
             log.error("Error handling update", e);

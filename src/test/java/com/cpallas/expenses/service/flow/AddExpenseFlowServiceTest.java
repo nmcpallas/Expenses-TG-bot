@@ -149,7 +149,10 @@ class AddExpenseFlowServiceTest {
 
         SendMessage message = sendMessages(telegramClient).getFirst();
         assertThat(message.getText()).isEqualTo("Трата успешно сохранена");
-        assertThat(message.getReplyMarkup()).isNotNull();
+        assertThat(message.getReplyMarkup()).isNull();
+        SendMessage generalMenu = sendMessages(telegramClient).getLast();
+        assertThat(generalMenu.getText()).isEqualTo("Выберите дальнейшее действие");
+        assertThat(generalMenu.getReplyMarkup()).isNotNull();
     }
 
     private CategoryJpa category(String name) {

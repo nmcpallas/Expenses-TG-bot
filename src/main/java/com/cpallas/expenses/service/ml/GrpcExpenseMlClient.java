@@ -9,10 +9,13 @@ import com.cpallas.expenses.ml.grpc.TrainingExample;
 import com.cpallas.expenses.ml.grpc.UploadTrainingDataRequest;
 import com.cpallas.expenses.ml.grpc.UploadTrainingDataResponse;
 import com.cpallas.expenses.service.dto.*;
+import com.cpallas.expenses.observability.TraceContext;
 import com.cpallas.expenses.storage.ids.CategoryId;
 import com.cpallas.expenses.storage.ids.ChatId;
 import com.cpallas.expenses.storage.jpa.CategoryJpa;
+import io.grpc.Metadata;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.MetadataUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,6 +30,11 @@ import java.util.concurrent.TimeUnit;
 @ConditionalOnProperty(prefix = "expense.ml", name = "mock-enabled", havingValue = "false", matchIfMissing = true)
 @RequiredArgsConstructor
 public class GrpcExpenseMlClient implements ExpenseMlClient {
+
+    private static final Metadata.Key<String> TRACE_ID_HEADER = Metadata.Key.of(
+            "x-trace-id",
+            Metadata.ASCII_STRING_MARSHALLER
+    );
 
     private final ExpenseClassifierGrpc.ExpenseClassifierBlockingStub stub;
     private final ExpenseMlProperties properties;
@@ -48,7 +56,7 @@ public class GrpcExpenseMlClient implements ExpenseMlClient {
                 .build();
 
         try {
-            PredictionResponse response = stub
+            PredictionResponse response = tracedStub()
                     .withDeadlineAfter(properties.deadlineMs(), TimeUnit.MILLISECONDS)
                     .predict(request);
             return toPrediction(response);
@@ -77,7 +85,7 @@ public class GrpcExpenseMlClient implements ExpenseMlClient {
                 .build();
 
         try {
-            UploadTrainingDataResponse response = stub
+            UploadTrainingDataResponse response = tracedStub()
                     .withDeadlineAfter(properties.deadlineMs(), TimeUnit.MILLISECONDS)
                     .uploadTrainingData(request);
             return new UploadTrainingDataResult(
@@ -134,5 +142,11 @@ public class GrpcExpenseMlClient implements ExpenseMlClient {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private ExpenseClassifierGrpc.ExpenseClassifierBlockingStub tracedStub() {
+        Metadata headers = new Metadata();
+        headers.put(TRACE_ID_HEADER, TraceContext.currentTraceId());
+        return stub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
     }
 }

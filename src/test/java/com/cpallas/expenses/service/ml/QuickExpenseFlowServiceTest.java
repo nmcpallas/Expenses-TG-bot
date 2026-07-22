@@ -102,6 +102,8 @@ class QuickExpenseFlowServiceTest {
         assertThat(sessionCaptor.getValue().getDescription()).isEqualTo("кофе");
         assertThat(sessionCaptor.getValue().getCategoryId().getId()).isEqualTo(category.getId().getId());
         assertThat(sendMessages(telegramClient).getFirst().getText()).isEqualTo("Трата сохранена: 250 · Кофе · кофе");
+        assertThat(sendMessages(telegramClient).getLast().getText()).isEqualTo("Выберите дальнейшее действие");
+        assertThat(sendMessages(telegramClient).getLast().getReplyMarkup()).isNotNull();
     }
 
     @Test
@@ -180,6 +182,8 @@ class QuickExpenseFlowServiceTest {
         assertThat(session.getFlow()).isEqualTo(FlowType.QUICK_EXPENSE);
         assertThat(session.getCategoryId().getId()).isEqualTo(category.getId().getId());
         assertThat(sendMessages(telegramClient).getFirst().getText()).isEqualTo("Трата сохранена: 250 · Кофе · кофе");
+        assertThat(sendMessages(telegramClient).getLast().getText()).isEqualTo("Выберите дальнейшее действие");
+        assertThat(sendMessages(telegramClient).getLast().getReplyMarkup()).isNotNull();
     }
 
     @Test
@@ -207,6 +211,8 @@ class QuickExpenseFlowServiceTest {
         assertThat(session.getStep()).isEqualTo(Step.DONE);
         assertThat(session.getCategoryId().getId()).isEqualTo(category.getId().getId());
         assertThat(sendMessages(telegramClient).getFirst().getText()).isEqualTo("Трата сохранена: 250 · Кофейни · кофе");
+        assertThat(sendMessages(telegramClient).getLast().getText()).isEqualTo("Выберите дальнейшее действие");
+        assertThat(sendMessages(telegramClient).getLast().getReplyMarkup()).isNotNull();
     }
 
     private UserSession quickReviewSession() {

@@ -2,6 +2,7 @@ package com.cpallas.expenses.service.flow;
 
 import com.cpallas.expenses.UserSession;
 import com.cpallas.expenses.controller.dto.CategoryMenu;
+import com.cpallas.expenses.controller.dto.GeneralMenu;
 import com.cpallas.expenses.enums.FlowType;
 import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.service.ExpenseService;
@@ -13,8 +14,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
@@ -22,7 +21,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
-import static com.cpallas.expenses.controller.util.MessageUtil.createBtn;
 import static com.cpallas.expenses.controller.util.MessageUtil.createMessage;
 
 @Service
@@ -95,17 +93,12 @@ public class AddExpenseFlowService {
             );
             session.setStep(Step.DONE);
             session.setFlow(FlowType.ADD_EXPENSE);
-            SendMessage message = createMessage("Трата успешно сохранена", getChatIdFromUpdate(update));
-            message.setReplyMarkup(backToMenuMarkup());
-            telegramClient.execute(message);
+            telegramClient.execute(createMessage("Трата успешно сохранена", getChatIdFromUpdate(update)));
+            telegramClient.execute(GeneralMenu.createMenuMessage(getChatIdFromUpdate(update)));
         } catch (Exception e) {
             telegramClient.execute(createMessage("Ошибка при сохранении траты, попробуйте еще раз", getChatIdFromUpdate(update)));
             throw e;
         }
-    }
-
-    private InlineKeyboardMarkup backToMenuMarkup() {
-        return new InlineKeyboardMarkup(List.of(new InlineKeyboardRow(createBtn("Назад к главному меню", Step.SHOW_GENERAL_MENU.name()))));
     }
 
     private void waitForCategoryName(Update update, UserSession session) throws TelegramApiException {

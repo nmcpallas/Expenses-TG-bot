@@ -1,6 +1,7 @@
 package com.cpallas.expenses.service.ml;
 
 import com.cpallas.expenses.config.ml.ExpenseMlProperties;
+import com.cpallas.expenses.observability.TraceContext;
 import com.cpallas.expenses.service.dto.ExpenseTrainingExample;
 import com.cpallas.expenses.service.dto.UploadTrainingDataResult;
 import com.cpallas.expenses.storage.ids.ChatId;
@@ -29,9 +30,15 @@ public class ExpenseTrainingDataJobService {
     private final ExpenseMlClient expenseMlClient;
     private final ExpenseMlProperties properties;
 
-    @Scheduled(cron = "0 0 2 * * *")
+    @Scheduled(
+            cron = "${expense.ml.training.cron}",
+            zone = "${expense.ml.training.zone}"
+    )
     public void scheduledUploadTrainingData() {
-        uploadTrainingData();
+        try (TraceContext.TraceScope ignored = TraceContext.open()) {
+            log.info("Starting scheduled expense ML training data upload.");
+            uploadTrainingData();
+        }
     }
 
     public TrainingDataUploadSummary uploadTrainingData() {
