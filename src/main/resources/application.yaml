@@ -34,6 +34,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:migrations
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
 telegram:
   enabled: true
   bot:
@@ -54,3 +59,7 @@ expense:
     training:
       cron: ${EXPENSE_ML_TRAINING_CRON:0 0 6 * * *}
       zone: ${EXPENSE_ML_TRAINING_ZONE:Asia/Tashkent}
+  reporting:
+    enabled: ${EXPENSE_REPORTING_ENABLED:true}
+    cron: ${EXPENSE_REPORTING_CRON:0 0 4 * * *}
+    zone: ${EXPENSE_REPORTING_ZONE:Asia/Tashkent}
