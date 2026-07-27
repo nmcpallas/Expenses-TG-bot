@@ -11,6 +11,7 @@ public record MonthlyReportReady(
         Long chatId,
         ReportPeriod period,
         MonthlyReport report,
+        ReportArtifact artifact,
         UUID requestedEventId,
         ZonedDateTime generatedAt
 ) {

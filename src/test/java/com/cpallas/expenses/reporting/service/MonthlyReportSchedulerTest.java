@@ -32,7 +32,7 @@ class MonthlyReportSchedulerTest {
     @Mock
     private MonthlyReportJobRepo monthlyReportJobRepo;
     @Mock
-    private MonthlyReportPublisher publisher;
+    private AnalyticsEventPublisher publisher;
 
     private MonthlyReportScheduler scheduler;
 
@@ -60,6 +60,9 @@ class MonthlyReportSchedulerTest {
         assertThat(event.chatId()).isEqualTo(42L);
         assertThat(event.period().start()).isEqualTo(LocalDate.of(2026, 6, 22));
         assertThat(event.period().end()).isEqualTo(today);
+        assertThat(event.comparisonPeriod().start()).isEqualTo(LocalDate.of(2026, 5, 22));
+        assertThat(event.comparisonPeriod().end()).isEqualTo(LocalDate.of(2026, 6, 22));
+        assertThat(event.timezone()).isEqualTo("Asia/Tashkent");
         assertThat(event.eventType()).isEqualTo("MonthlyReportRequested");
     }
 
@@ -75,7 +78,7 @@ class MonthlyReportSchedulerTest {
         scheduler.scheduleForDate(today);
 
         verify(monthlyReportJobRepo, never()).saveAndFlush(any());
-        verify(publisher, never()).publish(any());
+        verify(publisher, never()).publish(any(MonthlyReportRequested.class));
         verify(monthlyReportJobRepo, never()).findByChatIdAndPeriodStartAndPeriodEnd(eq(43L), any(), any());
     }
 

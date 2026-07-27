@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.time.ZonedDateTime;
+import java.math.BigDecimal;
 
 @EqualsAndHashCode(callSuper = false)
 @Data
@@ -23,6 +24,9 @@ public class CategoryJpa extends AuditableBaseJpa {
 
     @Column
     private String name;
+
+    @Column(name = "spending_limit", precision = 12, scale = 2)
+    private BigDecimal spendingLimit;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private ZonedDateTime createdAt;

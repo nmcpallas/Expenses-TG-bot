@@ -1,33 +1,15 @@
 package com.cpallas.expenses;
 
-import com.cpallas.expenses.controller.dto.SpendingStatus;
 import com.cpallas.expenses.controller.handler.UpdateHandler;
+import com.cpallas.expenses.enums.FlowType;
 import com.cpallas.expenses.enums.Step;
-import com.cpallas.expenses.exception.WrongFormat;
-import com.cpallas.expenses.service.ExpenseService;
-import com.cpallas.expenses.service.flow.AddCategoryFlowService;
-import com.cpallas.expenses.service.flow.AddExpenseFlowService;
-import com.cpallas.expenses.service.flow.ExcelExportFlowService;
-import com.cpallas.expenses.service.flow.FlowTypeResolver;
-import com.cpallas.expenses.service.flow.MonthLimitFlowService;
-import com.cpallas.expenses.service.flow.MonthStartDayFlowService;
-import com.cpallas.expenses.service.flow.StatusFlowService;
-import com.cpallas.expenses.service.flow.FlowDispatcher;
+import com.cpallas.expenses.service.flow.ExpenseActionFlowService;
 import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
-import com.cpallas.expenses.storage.ids.CategoryId;
-import com.cpallas.expenses.storage.ids.ChatId;
-import com.cpallas.expenses.storage.ids.UserId;
-import com.cpallas.expenses.storage.jpa.CategoryJpa;
-import com.cpallas.expenses.storage.jpa.ChatJpa;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -35,366 +17,146 @@ import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.chat.Chat;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
-import java.math.BigDecimal;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@TestInstance( TestInstance.Lifecycle.PER_METHOD)
-public class UpdateHandlerTest {
+class UpdateHandlerTest {
 
     @Mock
     private TelegramClient telegramClient;
     @Mock
-    private ExpenseService expenseService;
-    @Mock
     private QuickExpenseFlowService quickExpenseFlowService;
+    @Mock
+    private ExpenseActionFlowService expenseActionFlowService;
 
-    //ввести трату без категорий -> ввести категорию -> категория сохранилась
     @Test
-    void saveCategoryDuringExpenseSave() throws TelegramApiException {
-        Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
-        Mockito.when(expenseService.getCategories(Mockito.any())).thenReturn(Collections.emptyList());
+    void startShowsShortDescriptionAndHelpButton() throws Exception {
+        handler().handle(textUpdate(1L, 1L, "/start"));
 
-        UpdateHandler updateHandler = newHandler();
-
-        Update updateToSaveExpense = new Update();
-        CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.START_ADD_EXPENSE.name());
-        Message message = new Message();
-        message.setChat(new Chat(1L, "test"));
-        callbackQuery.setMessage(message);
-        callbackQuery.setId("testCallbackQueryId");
-        updateToSaveExpense.setCallbackQuery(callbackQuery);
-
-        updateHandler.handle(updateToSaveExpense);
-
-        assertThat(getSendMessage().getFirst().getText())
-                .isEqualTo("Отправьте потраченную сумму");
-
-        Update updateWithAmount = new Update();
-        Message messageWithAmount = new Message();
-        messageWithAmount.setChat(new Chat(1L, "test"));
-        messageWithAmount.setText("100");
-        updateWithAmount.setMessage(messageWithAmount);
-
-        updateHandler.handle(updateWithAmount);
-
-        Mockito.verify(expenseService, Mockito.times(1)).getCategories(Mockito.any());
-        SendMessage messageFromBot = getSendMessage().get(1);
-        assertThat(messageFromBot.getText())
-                .isEqualTo("У вас нет добавленных категорий. Создайте, пожалуйста, категорию и после заново введите трату");
-        InlineKeyboardMarkup replyMarkup = (InlineKeyboardMarkup) messageFromBot.getReplyMarkup();
-        assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getText()).isEqualTo("Добавить категорию");
-        assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getCallbackData()).isEqualTo(Step.START_ADD_CATEGORY.name());
-
-        callbackQuery.setData(Step.START_ADD_CATEGORY.name());
-        updateToSaveExpense.setCallbackQuery(callbackQuery);
-
-        updateHandler.handle(updateToSaveExpense);
-
-        assertThat(getSendMessage().get(2).getText())
-                .isEqualTo("Введите название категории");
-
-        Update updateWithCategory = new Update();
-        Message messageWithCategory = new Message();
-        messageWithCategory.setFrom(new User(1L, "test", false));
-        messageWithCategory.setChat(new Chat(1L, "test"));
-        messageWithCategory.setText("testCategory");
-        updateWithCategory.setMessage(messageWithCategory);
-
-        updateHandler.handle(updateWithCategory);
-
-        Mockito.verify(expenseService, Mockito.times(1)).createCategory(Mockito.any(ChatId.class), Mockito.any(UserId.class), eq(updateWithCategory.getMessage().getText()));
-        assertThat(getSendMessage().get(3).getText()).isEqualTo("Категория успешно добавлена");
-
-        newSessionAfterEachGeneralMenu(updateHandler, () -> {
-            try {
-                return getSendMessage().get(4);
-            } catch (TelegramApiException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        SendMessage response = sendMessages().getFirst();
+        assertThat(response.getText())
+                .contains("Просто напишите трату")
+                .contains("кофе 35000")
+                .contains("пришлю отчёты");
+        InlineKeyboardMarkup markup = (InlineKeyboardMarkup) response.getReplyMarkup();
+        assertThat(markup.getKeyboard().getFirst().getFirst().getText()).isEqualTo("Help");
+        assertThat(markup.getKeyboard().getFirst().getFirst().getCallbackData()).isEqualTo("HELP");
     }
 
     @Test
-    void saveExpense() throws TelegramApiException {
-        Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
-        CategoryJpa category = new CategoryJpa();
-        ChatJpa chat = new ChatJpa();
-        chat.setId(new ChatId(1L));
-        category.setChat(chat);
-        category.setName("testCategory");
-        category.setId(new CategoryId(UUID.randomUUID()));
-        Mockito.when(expenseService.getCategories(Mockito.any())).thenReturn(List.of(category));
+    void helpCommandShowsTheSameShortDescription() throws Exception {
+        handler().handle(textUpdate(1L, 1L, "/help"));
 
-        UpdateHandler updateHandler = newHandler();
-
-        Update updateToSaveExpense = new Update();
-        CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.START_ADD_EXPENSE.name());
-        Message message = new Message();
-        message.setChat(new Chat(1L, "test"));
-        callbackQuery.setMessage(message);
-        callbackQuery.setId("testCallbackQueryId");
-        updateToSaveExpense.setCallbackQuery(callbackQuery);
-
-        updateHandler.handle(updateToSaveExpense);
-
-        assertThat(getSendMessage().getFirst().getText())
-                .isEqualTo("Отправьте потраченную сумму");
-
-        Message messageWithAmount = new Message();
-        messageWithAmount.setChat(new Chat(1L, "test"));
-        messageWithAmount.setText("100");
-        updateToSaveExpense.setCallbackQuery(null);
-        updateToSaveExpense.setMessage(messageWithAmount);
-
-        updateHandler.handle(updateToSaveExpense);
-
-        Mockito.verify(expenseService, Mockito.times(1)).getCategories(Mockito.any());
-        SendMessage messageFromBot = getSendMessage().get(1);
-        assertThat(messageFromBot.getText())
-                .isEqualTo("Выберите категорию траты");
-        InlineKeyboardMarkup replyMarkup = (InlineKeyboardMarkup) messageFromBot.getReplyMarkup();
-        assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getText()).isEqualTo(category.getName());
-        assertThat(replyMarkup.getKeyboard().getFirst().getFirst().getCallbackData()).isEqualTo(category.getId().getId().toString());
-        assertThat(replyMarkup.getKeyboard().get(1).getFirst().getText()).isEqualTo("Добавить категорию");
-        assertThat(replyMarkup.getKeyboard().get(1).getFirst().getCallbackData()).isEqualTo(Step.START_ADD_CATEGORY.name());
-
-        callbackQuery.setData(category.getId().getId().toString());
-        updateToSaveExpense.setCallbackQuery(callbackQuery);
-        updateToSaveExpense.setMessage(null);
-
-        updateHandler.handle(updateToSaveExpense);
-
-        assertThat(getSendMessage().get(2).getText())
-                .isEqualTo("Введите описание траты");
-
-        Message messageWithDescription = new Message();
-        messageWithDescription.setFrom(new User(1L, "test", false));
-        messageWithDescription.setChat(new Chat(1L, "test"));
-        messageWithDescription.setText("testExpense");
-        updateToSaveExpense.setCallbackQuery(null);
-        updateToSaveExpense.setMessage(messageWithDescription);
-
-        updateHandler.handle(updateToSaveExpense);
-
-        Mockito.verify(expenseService, Mockito.times(1)).addSpending(Mockito.any(UserId.class), Mockito.any(ChatId.class), Mockito.any(UserSession.class));
-        assertThat(getSendMessage().get(3).getText()).isEqualTo("Трата успешно сохранена");
-
-        newSessionAfterEachGeneralMenu(updateHandler, () -> {
-            try {
-                return getSendMessage().get(4);
-            } catch (TelegramApiException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        SendMessage response = sendMessages().getFirst();
+        assertThat(response.getText())
+                .contains("Просто напишите трату")
+                .contains("О необычной трате предупрежу");
     }
 
     @Test
-    void saveLimitation() throws TelegramApiException, WrongFormat {
-        Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
+    void helpButtonShowsDescription() throws Exception {
+        handler().handle(callbackUpdate(1L, 1L, "HELP"));
 
-        UpdateHandler updateHandler = newHandler();
-
-        Update updateToSaveLimitation = new Update();
-        CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.START_SET_MONTH_LIMIT.name());
-        Message message = new Message();
-        message.setChat(new Chat(1L, "test"));
-        callbackQuery.setMessage(message);
-        callbackQuery.setId("testCallbackQueryId");
-        updateToSaveLimitation.setCallbackQuery(callbackQuery);
-
-        updateHandler.handle(updateToSaveLimitation);
-
-        assertThat(getSendMessage().getFirst().getText())
-                .isEqualTo("Отправьте сумму ограничения");
-
-        Message messageWithLimitation = new Message();
-        messageWithLimitation.setFrom(new User(1L, "test", false));
-        messageWithLimitation.setChat(new Chat(1L, "test"));
-        messageWithLimitation.setText("100");
-        updateToSaveLimitation.setCallbackQuery(null);
-        updateToSaveLimitation.setMessage(messageWithLimitation);
-
-        updateHandler.handle(updateToSaveLimitation);
-
-        Mockito.verify(expenseService, Mockito.times(1)).setOrUpdateLimitation(Mockito.any(UserId.class), Mockito.any(ChatId.class), Mockito.anyString());
-        SendMessage messageFromBot = getSendMessage().get(1);
-        assertThat(messageFromBot.getText())
-                .isEqualTo("Ограничение успешно установлено");
-
-        newSessionAfterEachGeneralMenu(updateHandler, () -> {
-            try {
-                return getSendMessage().get(2);
-            } catch (TelegramApiException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        SendMessage response = sendMessages().getFirst();
+        assertThat(response.getText())
+                .contains("Просто напишите трату")
+                .contains("пришлю отчёты");
     }
 
     @Test
-    void saveStartDay() throws TelegramApiException, WrongFormat {
-        Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
+    void oldMenuCallbackReturnsTextHintWithoutNewMenu() throws Exception {
+        Update update = callbackUpdate(1L, 1L, "SHOW_CURRENT_STATUS");
 
-        UpdateHandler updateHandler = newHandler();
+        handler().handle(update);
 
-        Update updateToSaveStartDay = new Update();
-        CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.START_SET_MONTH_START_DAY.name());
-        Message message = new Message();
-        message.setChat(new Chat(1L, "test"));
-        callbackQuery.setMessage(message);
-        callbackQuery.setId("testCallbackQueryId");
-        updateToSaveStartDay.setCallbackQuery(callbackQuery);
-
-        updateHandler.handle(updateToSaveStartDay);
-
-        assertThat(getSendMessage().getFirst().getText())
-                .isEqualTo("Отправьте день начала/окончания месяца");
-
-        Message messageWithStartDay = new Message();
-        messageWithStartDay.setFrom(new User(1L, "test", false));
-        messageWithStartDay.setChat(new Chat(1L, "test"));
-        messageWithStartDay.setText("11");
-        updateToSaveStartDay.setCallbackQuery(null);
-        updateToSaveStartDay.setMessage(messageWithStartDay);
-
-        updateHandler.handle(updateToSaveStartDay);
-
-        Mockito.verify(expenseService, Mockito.times(1)).saveInputStartDay(Mockito.any(UserId.class), Mockito.any(ChatId.class), Mockito.anyString());
-        SendMessage messageFromBot = getSendMessage().get(1);
-        assertThat(messageFromBot.getText())
-                .isEqualTo("День успешно установлен");
-
-        newSessionAfterEachGeneralMenu(updateHandler, () -> {
-            try {
-                return getSendMessage().get(2);
-            } catch (TelegramApiException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        SendMessage response = sendMessages().getFirst();
+        assertThat(response.getText())
+                .contains("Эта кнопка больше не используется")
+                .contains("такси 45000");
+        assertThat(response.getReplyMarkup()).isNull();
     }
 
     @Test
-    void checkStatus() throws TelegramApiException {
-        Mockito.when(telegramClient.execute(Mockito.any(AnswerCallbackQuery.class))).thenReturn(null);
-        Mockito.when(expenseService.getStatus(Mockito.any(ChatId.class), Mockito.any(UserId.class))).thenReturn(new SpendingStatus(new BigDecimal("100.0"), new BigDecimal("100.0"), Map.of("test1", new BigDecimal(1), "test2", new BigDecimal(2))));
+    void keepsExpenseSessionSeparateForUsersInSharedChat() throws Exception {
+        AtomicReference<UserSession> firstUserSession = new AtomicReference<>();
+        when(quickExpenseFlowService.tryStartQuickExpense(any(), any()))
+                .thenAnswer(invocation -> {
+                    Update update = invocation.getArgument(0);
+                    UserSession session = invocation.getArgument(1);
+                    if (update.getMessage().getFrom().getId().equals(1L)) {
+                        session.setFlow(FlowType.QUICK_EXPENSE);
+                        session.setStep(Step.AWAITING_QUICK_EXPENSE_CATEGORY);
+                        firstUserSession.set(session);
+                        return true;
+                    }
+                    return false;
+                });
+        UpdateHandler handler = handler();
 
-        UpdateHandler updateHandler = newHandler();
+        handler.handle(textUpdate(99L, 1L, "цветы 250"));
+        handler.handle(textUpdate(99L, 2L, "100"));
 
-        Update updateToGetStatus = new Update();
-        CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData(Step.SHOW_CURRENT_STATUS.name());
-        Message message = new Message();
-        message.setChat(new Chat(1L, "test"));
-        callbackQuery.setFrom(new User(1L, "test", false));
-        callbackQuery.setMessage(message);
-        callbackQuery.setId("testCallbackQueryId");
-        updateToGetStatus.setCallbackQuery(callbackQuery);
+        assertThat(sendMessages().getLast().getText())
+                .contains("Не получилось распознать действие");
 
-        updateHandler.handle(updateToGetStatus);
-
-        assertThat(getSendMessage().getFirst().getText())
-                .isEqualTo("Месячное ограничение: 100,0 Потрачено на данный момент: 100,0, Остаток в этом месяце: 0,0\n" +
-                        "test2: 2,0\n" +
-                        "test1: 1,0\n");
-
-        newSessionAfterEachGeneralMenu(updateHandler, () -> {
-            try {
-                return getSendMessage().get(1);
-            } catch (TelegramApiException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Test
-    void sendsGeneralMenuAfterHandlingError() throws TelegramApiException {
-        UpdateHandler updateHandler = newHandler();
-        Update update = new Update();
-        CallbackQuery callbackQuery = new CallbackQuery();
-        callbackQuery.setData("UNKNOWN_STEP");
-        Message message = new Message();
-        message.setChat(new Chat(1L, "test"));
-        callbackQuery.setMessage(message);
-        update.setCallbackQuery(callbackQuery);
-
-        updateHandler.handle(update);
-
-        List<SendMessage> messages = getSendMessage();
-        assertThat(messages.getFirst().getText()).isEqualTo("Произошла ошибка, попробуйте еще раз");
-        assertThat(messages.getLast().getText()).isEqualTo("Выберите дальнейшее действие");
-        assertThat(messages.getLast().getReplyMarkup()).isNotNull();
-    }
-
-    private void newSessionAfterEachGeneralMenu(UpdateHandler updateHandler, Supplier<SendMessage> initMessageSup) throws TelegramApiException {
-        updateHandler.handle(getNewMessage());
-        SendMessage initMessage = initMessageSup.get();
-        Assertions.assertThat(initMessage.getText()).isEqualTo("Выберите дальнейшее действие");
-        InlineKeyboardMarkup replyMarkup = (InlineKeyboardMarkup) initMessage.getReplyMarkup();
-        Map<String, String> kvGeneralMenu = replyMarkup.getKeyboard().stream().collect(Collectors.toMap($ -> $.getFirst().getCallbackData(), $ -> $.getFirst().getText()));
-        assertThat(kvGeneralMenu.get(Step.START_ADD_EXPENSE.name())).isEqualTo("Ввести одну трату");
-        assertThat(kvGeneralMenu.get(Step.SHOW_CURRENT_STATUS.name())).isEqualTo("Текущий статус по тратам");
-        assertThat(kvGeneralMenu.get(Step.START_SET_MONTH_LIMIT.name())).isEqualTo("Добавить месячное ограничение");
-        assertThat(kvGeneralMenu.get(Step.START_ADD_CATEGORY.name())).isEqualTo("Добавить категорию");
-        assertThat(kvGeneralMenu.get(Step.START_DOWNLOAD_EXCEL.name())).isEqualTo("Получить траты в виде excel-файла");
-    }
-
-    private UpdateHandler newHandler() {
-        FlowDispatcher flowDispatcher = new FlowDispatcher(
-                telegramClient,
-                new AddCategoryFlowService(telegramClient, expenseService),
-                new AddExpenseFlowService(telegramClient, expenseService),
-                new ExcelExportFlowService(telegramClient, expenseService),
-                new MonthLimitFlowService(telegramClient, expenseService),
-                new MonthStartDayFlowService(telegramClient, expenseService),
-                new StatusFlowService(telegramClient, expenseService),
-                quickExpenseFlowService,
-                new FlowTypeResolver()
+        Update firstUserCallback = callbackUpdate(
+                99L,
+                1L,
+                UUID.randomUUID().toString()
         );
+        handler.handle(firstUserCallback);
+
+        verify(quickExpenseFlowService).continueQuickExpense(
+                same(firstUserCallback),
+                same(firstUserSession.get())
+        );
+    }
+
+    private UpdateHandler handler() {
         return new UpdateHandler(
                 telegramClient,
                 quickExpenseFlowService,
-                flowDispatcher,
-                new FlowTypeResolver()
+                expenseActionFlowService
         );
     }
 
-    private Update getNewMessage() {
+    private Update textUpdate(Long chatId, Long userId, String text) {
         Update update = new Update();
         Message message = new Message();
-        message.setText("test");
-        message.setChat(new Chat(1L, "test"));
-        update.setCallbackQuery(null);
+        message.setText(text);
+        message.setFrom(new User(userId, "test", false));
+        message.setChat(new Chat(chatId, "test"));
         update.setMessage(message);
         return update;
     }
 
-    private List<SendMessage> getSendMessage() throws TelegramApiException {
-        ArgumentCaptor<SendMessage> captor = ArgumentCaptor.forClass(SendMessage.class);
-
-        verify(telegramClient, atLeastOnce()).execute(captor.capture());
-
-        return captor.getAllValues();
+    private Update callbackUpdate(Long chatId, Long userId, String data) {
+        Update update = new Update();
+        CallbackQuery callback = new CallbackQuery();
+        callback.setId(UUID.randomUUID().toString());
+        callback.setData(data);
+        callback.setFrom(new User(userId, "test", false));
+        Message message = new Message();
+        message.setChat(new Chat(chatId, "test"));
+        callback.setMessage(message);
+        update.setCallbackQuery(callback);
+        return update;
     }
 
-//проверить статус без ограничения -> статус
-//проверить статус с ограничением -> статус
-//скачивание файла
-//поменять ограничение -> проверить статус
+    private List<SendMessage> sendMessages() throws Exception {
+        ArgumentCaptor<SendMessage> captor = ArgumentCaptor.forClass(SendMessage.class);
+        verify(telegramClient, atLeastOnce()).execute(captor.capture());
+        return captor.getAllValues();
+    }
 }

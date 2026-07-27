@@ -28,7 +28,26 @@ class QuickExpenseParserTest {
     }
 
     @Test
-    void ignoreTextWithoutLeadingAmount() {
-        assertThat(QuickExpenseParser.parse("кофе 250")).isEmpty();
+    void parsesDescriptionBeforeAmount() {
+        assertThat(QuickExpenseParser.parse("кофе 250"))
+                .contains(new QuickExpense("кофе 250", new BigDecimal("250"), "кофе"));
+    }
+
+    @Test
+    void parsesThousandsSuffixAndSpaces() {
+        assertThat(QuickExpenseParser.parse("кофе 35к"))
+                .contains(new QuickExpense("кофе 35к", new BigDecimal("35000"), "кофе"));
+        assertThat(QuickExpenseParser.parse("120 000 продукты"))
+                .contains(new QuickExpense("120 000 продукты", new BigDecimal("120000"), "продукты"));
+    }
+
+    @Test
+    void keepsNumbersInDescriptionSeparateFromFinalAmount() {
+        assertThat(QuickExpenseParser.parse("айфон 15 100000"))
+                .contains(new QuickExpense(
+                        "айфон 15 100000",
+                        new BigDecimal("100000"),
+                        "айфон 15"
+                ));
     }
 }

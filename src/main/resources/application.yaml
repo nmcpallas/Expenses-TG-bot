@@ -39,6 +39,19 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
+    publisher-confirm-type: simple
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 2s
+          max-attempts: 5
+          multiplier: 2
+          max-interval: 30s
 telegram:
   enabled: true
   bot:
@@ -63,3 +76,10 @@ expense:
     enabled: ${EXPENSE_REPORTING_ENABLED:true}
     cron: ${EXPENSE_REPORTING_CRON:0 0 4 * * *}
     zone: ${EXPENSE_REPORTING_ZONE:Asia/Tashkent}
+    artifact-max-bytes: ${EXPENSE_REPORT_ARTIFACT_MAX_BYTES:20971520}
+  outbox:
+    fixed-delay-ms: ${EXPENSE_OUTBOX_FIXED_DELAY_MS:1000}
+  weekly-report:
+    enabled: ${EXPENSE_WEEKLY_REPORT_ENABLED:true}
+    cron: ${EXPENSE_WEEKLY_REPORT_CRON:0 0 10 * * MON}
+    zone: ${EXPENSE_WEEKLY_REPORT_ZONE:Asia/Tashkent}

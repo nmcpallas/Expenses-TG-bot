@@ -22,6 +22,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:migrations
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
 telegram:
   enabled: true
   bot:

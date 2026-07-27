@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -26,7 +27,7 @@ public class MonthlyReportScheduler {
 
     private final ChatRepo chatRepo;
     private final MonthlyReportJobRepo monthlyReportJobRepo;
-    private final MonthlyReportPublisher publisher;
+    private final AnalyticsEventPublisher publisher;
 
     @Value("${expense.reporting.enabled}")
     private boolean enabled;
@@ -35,6 +36,7 @@ public class MonthlyReportScheduler {
     private String zone;
 
     @Scheduled(cron = "${expense.reporting.cron}", zone = "${expense.reporting.zone}")
+    @Transactional
     public void scheduleMonthlyReports() {
         if (!enabled) {
             return;
@@ -44,6 +46,7 @@ public class MonthlyReportScheduler {
         }
     }
 
+    @Transactional
     public void scheduleForDate(LocalDate today) {
         int published = 0;
         for (ChatJpa chat : chatRepo.findAll()) {
@@ -68,7 +71,13 @@ public class MonthlyReportScheduler {
             job.setCreatedAt(ZonedDateTime.now(ZoneId.of(zone)));
             monthlyReportJobRepo.saveAndFlush(job);
 
-            publisher.publish(MonthlyReportRequested.of(eventId, chat.getId().getId(), new ReportPeriod(periodStart, today)));
+            publisher.publish(MonthlyReportRequested.of(
+                    eventId,
+                    chat.getId().getId(),
+                    new ReportPeriod(periodStart, today),
+                    new ReportPeriod(periodStart.minusMonths(1), periodStart),
+                    zone
+            ));
             published++;
         }
         log.info("Monthly report scheduler finished: date={}, published={}", today, published);
