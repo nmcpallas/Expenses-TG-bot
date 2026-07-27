@@ -1,11 +1,10 @@
 package com.cpallas.expenses.service;
 
 import com.cpallas.expenses.UserSession;
-import com.cpallas.expenses.controller.dto.Month;
 import com.cpallas.expenses.controller.dto.SpendingStatus;
 import com.cpallas.expenses.enums.ChatRole;
-import com.cpallas.expenses.exception.WrongFormat;
-import com.cpallas.expenses.service.dto.ExpenseExportRow;
+import com.cpallas.expenses.reporting.contract.ExpenseRecorded;
+import com.cpallas.expenses.reporting.service.AnalyticsEventPublisher;
 import com.cpallas.expenses.storage.ids.CategoryId;
 import com.cpallas.expenses.storage.ids.ChatMemberId;
 import com.cpallas.expenses.storage.ids.ChatId;
@@ -18,12 +17,14 @@ import com.cpallas.expenses.storage.repo.ChatRepo;
 import com.cpallas.expenses.storage.repo.ExpenseRepo;
 import com.cpallas.expenses.storage.repo.UserRepo;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -34,14 +35,29 @@ import java.util.stream.StreamSupport;
 @RequiredArgsConstructor
 public class ExpenseService {
 
+    private static final List<String> DEFAULT_CATEGORIES = List.of(
+            "Продукты",
+            "Кафе",
+            "Транспорт",
+            "Дом",
+            "Здоровье",
+            "Развлечения",
+            "Покупки",
+            "Другое"
+    );
+
     private final UserRepo userRepo;
     private final ChatRepo chatRepo;
     private final ExpenseRepo expenseRepo;
     private final CategoryRepo categoryRepo;
     private final ChatMemberRepo chatMemberRepo;
+    private final AnalyticsEventPublisher analyticsEventPublisher;
+
+    @Value("${expense.reporting.zone:Asia/Tashkent}")
+    private String reportingZone;
 
     @Transactional(rollbackFor = Exception.class)
-    public void addSpending(UserId userId, ChatId chatId, UserSession userSession) {
+    public ExpenseJpa addSpending(UserId userId, ChatId chatId, UserSession userSession) {
         ChatJpa chat = getChat(chatId, userId);
         ExpenseJpa s = new ExpenseJpa();
 
@@ -49,14 +65,22 @@ public class ExpenseService {
         s.setChat(chat);
         s.setAmount(userSession.getAmount());
         s.setDescription(userSession.getDescription());
-        s.setCategory(categoryRepo.findById(userSession.getCategoryId()).orElseThrow());
+        s.setCategory(categoryRepo.findByIdAndChatId(userSession.getCategoryId(), chatId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Category does not belong to this chat."
+                )));
 
-        expenseRepo.save(s);
+        ExpenseJpa saved = expenseRepo.save(s);
+        analyticsEventPublisher.publish(ExpenseRecorded.of(
+                saved.getId().getId(),
+                chatId.getId()
+        ));
+        return saved;
     }
 
-    @Transactional(readOnly = true, rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class)
     public SpendingStatus getStatus(ChatId chatId, UserId userId) {
-        ZonedDateTime now = ZonedDateTime.now();
+        ZonedDateTime now = ZonedDateTime.now(reportingZone());
         ChatJpa chat = getChat(chatId, userId);
 
         int monthStartDay = chat.getMonthStart();
@@ -97,85 +121,172 @@ public class ExpenseService {
                         )
                 ));
 
+        Map<String, BigDecimal> limitsByCategory = categoryRepo.findAllByChatId(chatId).stream()
+                .filter(category -> category.getSpendingLimit() != null)
+                .collect(Collectors.toMap(
+                        CategoryJpa::getName,
+                        CategoryJpa::getSpendingLimit
+                ));
+
         return new SpendingStatus(chat.getMonthLimit(),
                 spent,
-                expensesByCategory);
+                expensesByCategory,
+                limitsByCategory);
     }
 
-    @Transactional(readOnly = true)
-    public List<CategoryJpa> getCategories(ChatId chatId) {
-        return categoryRepo.findAllByChatId(chatId);
-    }
+    @Transactional(rollbackFor = Exception.class)
+    public List<CategoryJpa> getOrCreateCategories(ChatId chatId, UserId userId) {
+        ChatJpa chat = getChat(chatId, userId);
+        List<CategoryJpa> existing = categoryRepo.findAllByChatId(chatId);
+        if (!existing.isEmpty()) {
+            return existing;
+        }
 
-    @Transactional(readOnly = true)
-    public long countExpenses(ChatId chatId) {
-        return expenseRepo.count(QExpenseJpa.expenseJpa.chat.id.eq(chatId));
+        return DEFAULT_CATEGORIES.stream()
+                .map(name -> newCategory(chat, name))
+                .map(categoryRepo::save)
+                .toList();
     }
 
     @Transactional(rollbackFor = Exception.class)
     public CategoryJpa createCategory(ChatId chatId, UserId userId, String name) {
-        CategoryJpa entity = new CategoryJpa();
+        String normalizedName = name == null ? "" : name.trim();
+        if (normalizedName.isBlank()) {
+            throw new IllegalArgumentException("Category name must not be blank.");
+        }
+        Optional<CategoryJpa> existing = categoryRepo.findAllByChatId(chatId).stream()
+                .filter(category -> category.getName().equalsIgnoreCase(normalizedName))
+                .findFirst();
+        return existing.orElseGet(() -> categoryRepo.save(
+                newCategory(getChat(chatId, userId), normalizedName)
+        ));
+    }
 
-        entity.setId(new CategoryId(UUID.randomUUID()));
-        entity.setChat(getChat(chatId, userId));
-        entity.setName(name);
+    @Transactional
+    public Optional<ExpenseJpa> getLastExpense(ChatId chatId, UserId userId) {
+        getChat(chatId, userId);
+        return expenseRepo.findFirstByChat_IdOrderByCreatedAtDesc(chatId);
+    }
 
-        return categoryRepo.save(entity);
+    @Transactional
+    public Optional<ExpenseJpa> getExpense(ChatId chatId, UserId userId, ExpenseId expenseId) {
+        getChat(chatId, userId);
+        return expenseRepo.findByIdAndChat_Id(expenseId, chatId);
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void setOrUpdateLimitation(UserId userId, ChatId chatId, String limitationText) throws WrongFormat {
-        try {
-            ChatJpa chat = getChat(chatId, userId);
-            chat.setMonthLimit(new BigDecimal(limitationText));
-
-            chatRepo.save(chat);
-        } catch (NumberFormatException e) {
-            throw new WrongFormat("Incorrect format, expected number, but got: '%s'".formatted(limitationText));
-        }
+    public Optional<ExpenseJpa> deleteLastExpense(ChatId chatId, UserId userId) {
+        getChat(chatId, userId);
+        Optional<ExpenseJpa> expense = expenseRepo.findFirstByChat_IdOrderByCreatedAtDesc(chatId);
+        expense.ifPresent(expenseRepo::delete);
+        return expense;
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void saveInputStartDay(UserId userId, ChatId chatId, String day) throws WrongFormat {
-        try {
-            ChatJpa chat = getChat(chatId, userId);
-            chat.setMonthStart(Integer.parseInt(day.trim()));
+    public Optional<ExpenseJpa> deleteExpense(ChatId chatId, UserId userId, ExpenseId expenseId) {
+        getChat(chatId, userId);
+        Optional<ExpenseJpa> expense = expenseRepo.findByIdAndChat_Id(expenseId, chatId);
+        expense.ifPresent(expenseRepo::delete);
+        return expense;
+    }
 
-            chatRepo.save(chat);
-        } catch (NumberFormatException e) {
-            throw new WrongFormat("Incorrect format, expected number, but got: '%s'".formatted(day));
+    @Transactional(rollbackFor = Exception.class)
+    public ExpenseJpa updateExpenseAmount(ChatId chatId,
+                                          UserId userId,
+                                          ExpenseId expenseId,
+                                          BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("Expense amount must be positive.");
         }
+        ExpenseJpa expense = requiredExpense(chatId, userId, expenseId);
+        expense.setAmount(amount);
+        return expenseRepo.save(expense);
     }
 
-    @Transactional(readOnly = true, rollbackFor = Exception.class)
-    public List<ExpenseExportRow> getExpenses(ChatId chatId, Month month) {
-        ZonedDateTime firstDayOfMonth = getFirstDayOfMonth(month);
-        ZonedDateTime lastDayOfMonth = getLastDayOfMonth(month);
-
-        return StreamSupport.stream(
-                expenseRepo.findAll(QExpenseJpa.expenseJpa.createdAt.between(firstDayOfMonth, lastDayOfMonth)
-                        .and(QExpenseJpa.expenseJpa.chat.id.eq(chatId))).spliterator(),
-                false
-        ).map($ -> new ExpenseExportRow($.getAmount(), $.getCategory() == null ? "" : $.getCategory().getName(), $.getDescription(), $.getCreatedAt()))
-                .toList();
+    @Transactional(rollbackFor = Exception.class)
+    public ExpenseJpa updateExpenseDescription(ChatId chatId,
+                                               UserId userId,
+                                               ExpenseId expenseId,
+                                               String description) {
+        String normalizedDescription = description == null ? "" : description.trim();
+        if (normalizedDescription.isBlank()) {
+            throw new IllegalArgumentException("Expense description must not be blank.");
+        }
+        ExpenseJpa expense = requiredExpense(chatId, userId, expenseId);
+        expense.setDescription(normalizedDescription);
+        return expenseRepo.save(expense);
     }
 
-    private ZonedDateTime getFirstDayOfMonth(Month month) {
-        return ZonedDateTime.now()
-                .withMonth(month.ordinal() + 1)
-                .withDayOfMonth(1)
-                .withHour(0)
-                .withMinute(0)
-                .withSecond(0)
-                .withNano(0);
+    @Transactional(rollbackFor = Exception.class)
+    public ExpenseJpa updateExpenseCategory(ChatId chatId,
+                                            UserId userId,
+                                            ExpenseId expenseId,
+                                            CategoryId categoryId) {
+        ExpenseJpa expense = requiredExpense(chatId, userId, expenseId);
+        CategoryJpa category = categoryRepo.findByIdAndChatId(categoryId, chatId)
+                .orElseThrow(() -> new IllegalArgumentException("Category does not belong to this chat."));
+        expense.setCategory(category);
+        return expenseRepo.save(expense);
     }
 
-    private ZonedDateTime getLastDayOfMonth(Month month) {
-        return getFirstDayOfMonth(month)
-                .plusMonths(1)
-                .minusNanos(1);
+    @Transactional(rollbackFor = Exception.class)
+    public CategoryJpa updateCategoryLimit(ChatId chatId,
+                                           UserId userId,
+                                           CategoryId categoryId,
+                                           BigDecimal limit) {
+        getChat(chatId, userId);
+        if (limit != null && limit.signum() < 0) {
+            throw new IllegalArgumentException("Category limit must not be negative.");
+        }
+        CategoryJpa category = categoryRepo.findByIdAndChatId(categoryId, chatId)
+                .orElseThrow(() -> new IllegalArgumentException("Category does not belong to this chat."));
+        category.setSpendingLimit(limit == null || limit.signum() == 0 ? null : limit);
+        return categoryRepo.save(category);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public ChatJpa updateBudgetSettings(ChatId chatId,
+                                        UserId userId,
+                                        BigDecimal monthLimit,
+                                        Integer monthStart,
+                                        Boolean weeklyReportEnabled,
+                                        Boolean unusualNotificationsEnabled) {
+        ChatJpa chat = getChat(chatId, userId);
+        if (monthLimit != null) {
+            if (monthLimit.signum() < 0) {
+                throw new IllegalArgumentException("Month limit must not be negative.");
+            }
+            chat.setMonthLimit(monthLimit);
+        }
+        if (monthStart != null) {
+            if (monthStart < 1 || monthStart > 28) {
+                throw new IllegalArgumentException("Month start must be between 1 and 28.");
+            }
+            chat.setMonthStart(monthStart);
+        }
+        if (weeklyReportEnabled != null) {
+            chat.setWeeklyReportEnabled(weeklyReportEnabled);
+        }
+        if (unusualNotificationsEnabled != null) {
+            chat.setUnusualNotificationsEnabled(unusualNotificationsEnabled);
+        }
+        return chatRepo.save(chat);
+    }
+
+    @Transactional
+    public ChatJpa getBudgetSettings(ChatId chatId, UserId userId) {
+        return getChat(chatId, userId);
+    }
+
+    @Transactional
+    public List<ExpenseJpa> getRecentExpenses(ChatId chatId, UserId userId, int limit) {
+        getChat(chatId, userId);
+        return expenseRepo.findAll(
+                        QExpenseJpa.expenseJpa.chat.id.eq(chatId),
+                        PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))
+                )
+                .getContent();
+    }
 
     private UserJpa getUser(UserId userId) {
         return userRepo.findById(userId)
@@ -184,6 +295,12 @@ public class ExpenseService {
 
     private ChatJpa getChat(ChatId chatId, UserId userId) {
         return chatRepo.findById(chatId)
+                .map(chat -> {
+                    if (chatMemberRepo.findByChatIdAndUserId(chatId, userId).isEmpty()) {
+                        addChatMember(chat, getUser(userId), ChatRole.MEMBER);
+                    }
+                    return chat;
+                })
                 .orElseGet(() -> createChatWithOwner(chatId, userId));
     }
 
@@ -191,12 +308,7 @@ public class ExpenseService {
         UserJpa user = getUser(userId);
         ChatJpa chat = chatRepo.save(newChat(chatId, user));
 
-        ChatMemberJpa member = new ChatMemberJpa();
-        member.setId(new ChatMemberId(UUID.randomUUID()));
-        member.setChat(chat);
-        member.setUser(user);
-        member.setRole(ChatRole.OWNER);
-        chatMemberRepo.save(member);
+        addChatMember(chat, user, ChatRole.OWNER);
 
         return chat;
     }
@@ -208,8 +320,37 @@ public class ExpenseService {
         jpa.setUser(user);
         jpa.setMonthLimit(BigDecimal.ZERO);
         jpa.setMonthStart(1);
+        jpa.setWeeklyReportEnabled(true);
+        jpa.setUnusualNotificationsEnabled(true);
 
         return jpa;
+    }
+
+    private CategoryJpa newCategory(ChatJpa chat, String name) {
+        CategoryJpa entity = new CategoryJpa();
+        entity.setId(new CategoryId(UUID.randomUUID()));
+        entity.setChat(chat);
+        entity.setName(name);
+        return entity;
+    }
+
+    private void addChatMember(ChatJpa chat, UserJpa user, ChatRole role) {
+        ChatMemberJpa member = new ChatMemberJpa();
+        member.setId(new ChatMemberId(UUID.randomUUID()));
+        member.setChat(chat);
+        member.setUser(user);
+        member.setRole(role);
+        chatMemberRepo.save(member);
+    }
+
+    private ZoneId reportingZone() {
+        return ZoneId.of(reportingZone);
+    }
+
+    private ExpenseJpa requiredExpense(ChatId chatId, UserId userId, ExpenseId expenseId) {
+        getChat(chatId, userId);
+        return expenseRepo.findByIdAndChat_Id(expenseId, chatId)
+                .orElseThrow(() -> new IllegalArgumentException("Expense was not found."));
     }
 
     private static UserJpa newUser(UserId userId) {

@@ -3,9 +3,9 @@ package com.cpallas.expenses.service.ml;
 import com.cpallas.expenses.enums.FlowType;
 import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.UserSession;
-import com.cpallas.expenses.controller.dto.CategoryMenu;
-import com.cpallas.expenses.controller.dto.GeneralMenu;
+import com.cpallas.expenses.controller.dto.ExpenseActionMenu;
 import com.cpallas.expenses.service.ExpenseService;
+import com.cpallas.expenses.service.ExpenseMessageFormatter;
 import com.cpallas.expenses.service.dto.ExpenseCategoryPrediction;
 import com.cpallas.expenses.service.dto.ExpensePredictionAlternative;
 import com.cpallas.expenses.service.dto.QuickExpense;
@@ -14,6 +14,7 @@ import com.cpallas.expenses.storage.ids.CategoryId;
 import com.cpallas.expenses.storage.ids.ChatId;
 import com.cpallas.expenses.storage.ids.UserId;
 import com.cpallas.expenses.storage.jpa.CategoryJpa;
+import com.cpallas.expenses.storage.jpa.ExpenseJpa;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -35,12 +36,14 @@ import static com.cpallas.expenses.controller.util.MessageUtil.createMessage;
 @RequiredArgsConstructor
 public class QuickExpenseFlowService {
 
-    private static final String QUICK_CUSTOM_CATEGORY_CALLBACK = "QUICK_CUSTOM_CATEGORY";
+    static final String QUICK_SHOW_CATEGORIES_CALLBACK = "QUICK_SHOW_CATEGORIES";
+    static final String QUICK_CUSTOM_CATEGORY_CALLBACK = "QUICK_CUSTOM_CATEGORY";
 
     private final TelegramClient telegramClient;
     private final ExpenseService expenseService;
     private final ExpenseMlClient expenseMlClient;
-    private final QuickExpenseEligibilityService quickExpenseEligibilityService;
+    private final DefaultCategoryClassifier defaultCategoryClassifier;
+    private final ExpenseMessageFormatter expenseMessageFormatter;
 
     public boolean tryStartQuickExpense(Update update, UserSession session) throws TelegramApiException {
         if (!update.hasMessage() || !update.getMessage().hasText()) {
@@ -53,33 +56,15 @@ public class QuickExpenseFlowService {
         }
 
         ChatId chatId = new ChatId(getChatIdFromUpdate(update));
-        List<CategoryJpa> categories = expenseService.getCategories(chatId);
-        if (categories.isEmpty()) {
-            SendMessage message = createMessage("У вас нет добавленных категорий. Создайте, пожалуйста, категорию и после заново введите трату",
-                    getChatIdFromUpdate(update));
-            message.setReplyMarkup(CategoryMenu.createCategory());
-            telegramClient.execute(message);
-            return true;
-        }
-
-        QuickExpenseMode quickExpenseMode = quickExpenseEligibilityService.resolveMode(chatId, categories.size());
-        if (quickExpenseMode == QuickExpenseMode.DISABLED) {
-            return false;
-        }
-
-        ExpenseCategoryPrediction prediction = expenseMlClient.predict(chatId, quickExpense.get(), categories);
-        if (quickExpenseMode == QuickExpenseMode.AUTO_SAVE_ALLOWED && prediction.acceptedCategoryId().isPresent()) {
+        UserId userId = getUserIdFromUpdate(update);
+        List<CategoryJpa> categories = expenseService.getOrCreateCategories(chatId, userId);
+        ExpenseCategoryPrediction prediction = defaultCategoryClassifier
+                .predict(quickExpense.get(), categories)
+                .orElseGet(() -> expenseMlClient.predict(chatId, quickExpense.get(), categories));
+        if (prediction.acceptedCategoryId().isPresent()) {
             UserSession quickSession = newQuickExpenseSession(quickExpense.get(), prediction.acceptedCategoryId().get());
-            expenseService.addSpending(getUserIdFromUpdate(update), chatId, quickSession);
-            telegramClient.execute(createMessage(
-                    "Трата сохранена: %s · %s · %s".formatted(
-                            quickExpense.get().amount(),
-                            prediction.categoryName(),
-                            quickExpense.get().description()
-                    ),
-                    getChatIdFromUpdate(update)
-            ));
-            telegramClient.execute(GeneralMenu.createMenuMessage(getChatIdFromUpdate(update)));
+            ExpenseJpa saved = expenseService.addSpending(userId, chatId, quickSession);
+            sendSavedExpense(update, saved);
             return true;
         }
 
@@ -111,15 +96,37 @@ public class QuickExpenseFlowService {
     private InlineKeyboardMarkup quickCategoryMarkup(List<ExpensePredictionAlternative> alternatives, List<CategoryJpa> categories) {
         List<InlineKeyboardRow> keyboard = new ArrayList<>();
         if (alternatives.isEmpty()) {
-            categories.forEach($ -> keyboard.add(new InlineKeyboardRow(createBtn($.getName(), $.getId().getId().toString()))));
+            addExistingCategoryButtons(keyboard, categories);
         } else {
             alternatives.forEach($ -> keyboard.add(new InlineKeyboardRow(createBtn(
                     "%s (%.0f%%)".formatted($.categoryName(), $.confidence() * 100),
                     $.categoryId().getId().toString()
             ))));
+            keyboard.add(new InlineKeyboardRow(createBtn(
+                    "Показать существующие категории",
+                    QUICK_SHOW_CATEGORIES_CALLBACK
+            )));
         }
         keyboard.add(new InlineKeyboardRow(createBtn("Ввести свою категорию", QUICK_CUSTOM_CATEGORY_CALLBACK)));
         return new InlineKeyboardMarkup(keyboard);
+    }
+
+    private InlineKeyboardMarkup existingCategoryMarkup(List<CategoryJpa> categories) {
+        List<InlineKeyboardRow> keyboard = new ArrayList<>();
+        addExistingCategoryButtons(keyboard, categories);
+        keyboard.add(new InlineKeyboardRow(createBtn(
+                "Ввести новую категорию",
+                QUICK_CUSTOM_CATEGORY_CALLBACK
+        )));
+        return new InlineKeyboardMarkup(keyboard);
+    }
+
+    private void addExistingCategoryButtons(List<InlineKeyboardRow> keyboard,
+                                            List<CategoryJpa> categories) {
+        categories.forEach(category -> keyboard.add(new InlineKeyboardRow(createBtn(
+                category.getName(),
+                category.getId().getId().toString()
+        ))));
     }
 
     private List<ExpensePredictionAlternative> reviewAlternatives(ExpenseCategoryPrediction prediction) {
@@ -140,6 +147,19 @@ public class QuickExpenseFlowService {
             telegramClient.execute(createMessage("Выберите категорию кнопкой или введите свою", getChatIdFromUpdate(update)));
             return;
         }
+        if (QUICK_SHOW_CATEGORIES_CALLBACK.equals(update.getCallbackQuery().getData())) {
+            List<CategoryJpa> categories = expenseService.getOrCreateCategories(
+                    new ChatId(getChatIdFromUpdate(update)),
+                    getUserIdFromUpdate(update)
+            );
+            SendMessage message = createMessage(
+                    "Выберите существующую категорию или создайте новую",
+                    getChatIdFromUpdate(update)
+            );
+            message.setReplyMarkup(existingCategoryMarkup(categories));
+            telegramClient.execute(message);
+            return;
+        }
         if (QUICK_CUSTOM_CATEGORY_CALLBACK.equals(update.getCallbackQuery().getData())) {
             session.setStep(Step.AWAITING_QUICK_EXPENSE_CATEGORY_NAME);
             session.setFlow(FlowType.QUICK_EXPENSE);
@@ -148,7 +168,7 @@ public class QuickExpenseFlowService {
         }
 
         session.setCategoryId(new CategoryId(UUID.fromString(update.getCallbackQuery().getData())));
-        saveQuickExpense(update, session, findCategoryName(new ChatId(getChatIdFromUpdate(update)), session.getCategoryId()));
+        saveQuickExpense(update, session);
     }
 
     private void addQuickExpenseCategoryName(Update update, UserSession session) throws TelegramApiException {
@@ -158,22 +178,18 @@ public class QuickExpenseFlowService {
                 update.getMessage().getText()
         );
         session.setCategoryId(category.getId());
-        saveQuickExpense(update, session, category.getName());
+        saveQuickExpense(update, session);
     }
 
-    private void saveQuickExpense(Update update, UserSession session, String categoryName) throws TelegramApiException {
-        expenseService.addSpending(
+    private void saveQuickExpense(Update update, UserSession session) throws TelegramApiException {
+        ExpenseJpa saved = expenseService.addSpending(
                 getUserIdFromUpdate(update),
                 new ChatId(getChatIdFromUpdate(update)),
                 session
         );
         session.setStep(Step.DONE);
         session.setFlow(FlowType.QUICK_EXPENSE);
-        telegramClient.execute(createMessage(
-                "Трата сохранена: %s · %s · %s".formatted(session.getAmount(), categoryName, session.getDescription()),
-                getChatIdFromUpdate(update)
-        ));
-        telegramClient.execute(GeneralMenu.createMenuMessage(getChatIdFromUpdate(update)));
+        sendSavedExpense(update, saved);
     }
 
     private UserSession newQuickExpenseSession(QuickExpense quickExpense, CategoryId categoryId) {
@@ -185,14 +201,6 @@ public class QuickExpenseFlowService {
         return session;
     }
 
-    private String findCategoryName(ChatId chatId, CategoryId categoryId) {
-        return expenseService.getCategories(chatId).stream()
-                .filter($ -> $.getId().getId().equals(categoryId.getId()))
-                .map(CategoryJpa::getName)
-                .findFirst()
-                .orElse("выбранная категория");
-    }
-
     private Long getChatIdFromUpdate(Update update) {
         if (update.hasMessage()) return update.getMessage().getChatId();
         return update.getCallbackQuery().getMessage().getChatId();
@@ -201,5 +209,17 @@ public class QuickExpenseFlowService {
     private UserId getUserIdFromUpdate(Update update) {
         if (update.hasMessage()) return new UserId(update.getMessage().getFrom().getId());
         return new UserId(update.getCallbackQuery().getFrom().getId());
+    }
+
+    private void sendSavedExpense(Update update, ExpenseJpa expense) throws TelegramApiException {
+        ChatId chatId = new ChatId(getChatIdFromUpdate(update));
+        UserId userId = getUserIdFromUpdate(update);
+        SendMessage message = createMessage(
+                expenseMessageFormatter.saved(expense, expenseService.getStatus(chatId, userId)),
+                chatId.getId()
+        );
+        message.setReplyMarkup(ExpenseActionMenu.afterSave(expense.getId()));
+        telegramClient.execute(message);
+
     }
 }

@@ -3,6 +3,7 @@ package com.cpallas.expenses.reporting.service;
 import com.cpallas.expenses.reporting.contract.CategoryReport;
 import com.cpallas.expenses.reporting.contract.MonthlyReport;
 import com.cpallas.expenses.reporting.contract.MonthlyReportReady;
+import com.cpallas.expenses.reporting.contract.ReportArtifact;
 import com.cpallas.expenses.reporting.contract.ReportPeriod;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +30,7 @@ class MonthlyReportMessageFormatterTest {
                         List.of(new CategoryReport("Продукты", new BigDecimal("90000"), new BigDecimal("70000"), new BigDecimal("20000"), new BigDecimal("28.6"))),
                         List.of("Лимит превышен на 10000.")
                 ),
+                new ReportArtifact("bucket", "key", "report.xlsx", "application/xlsx", 1, "hash", "http://localhost"),
                 UUID.randomUUID(), ZonedDateTime.now()
         );
 

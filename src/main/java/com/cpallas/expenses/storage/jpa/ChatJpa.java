@@ -29,6 +29,12 @@ public class ChatJpa extends AuditableBaseJpa {
     @Column(name = "month_start", nullable = false)
     private Integer monthStart;
 
+    @Column(name = "weekly_report_enabled", nullable = false)
+    private boolean weeklyReportEnabled = true;
+
+    @Column(name = "unusual_notifications_enabled", nullable = false)
+    private boolean unusualNotificationsEnabled = true;
+
     @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private UserJpa user;
