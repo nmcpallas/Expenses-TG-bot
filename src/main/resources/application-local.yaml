@@ -30,8 +30,8 @@ spring:
 telegram:
   enabled: true
   bot:
-    username: expenses_llocal_bot
-    token: 8976027996:AAFbnkXPTUrTf5DkAnq843MH3YSiRw0a4QQ
+    username: ${TG_BOT_USERNAME:expenses_llocal_bot}
+    token: ${TG_BOT_TOKEN}
 
 system:
   dispatcher-capacity: 100

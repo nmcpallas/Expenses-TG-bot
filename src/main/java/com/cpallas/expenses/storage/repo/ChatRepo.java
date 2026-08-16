@@ -4,10 +4,15 @@ import com.cpallas.expenses.storage.ids.ChatId;
 import com.cpallas.expenses.storage.jpa.ChatJpa;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface ChatRepo extends JpaRepository<ChatJpa, ChatId> {
 
     Optional<ChatJpa> findById(@NotNull ChatId id);
+
+    @Query("select chat.id.id from ChatJpa chat order by chat.id.id")
+    List<Long> findAllChatIds();
 }

@@ -76,7 +76,7 @@ class ExpenseServiceTest {
         when(chatRepo.findById(CHAT_ID)).thenReturn(Optional.of(chat));
         when(chatMemberRepo.findByChatIdAndUserId(CHAT_ID, USER_ID)).thenReturn(Optional.empty());
         when(userRepo.findById(USER_ID)).thenReturn(Optional.of(user));
-        when(categoryRepo.findAllByChatId(CHAT_ID)).thenReturn(List.of(new CategoryJpa()));
+        when(categoryRepo.findAllByChatIdAndArchivedFalse(CHAT_ID)).thenReturn(List.of(new CategoryJpa()));
 
         service.getOrCreateCategories(CHAT_ID, USER_ID);
 
@@ -99,7 +99,7 @@ class ExpenseServiceTest {
         when(chatRepo.findById(CHAT_ID)).thenReturn(Optional.of(chat));
         when(chatMemberRepo.findByChatIdAndUserId(CHAT_ID, USER_ID))
                 .thenReturn(Optional.of(member));
-        when(categoryRepo.findByIdAndChatId(foreignCategory, CHAT_ID))
+        when(categoryRepo.findByIdAndChatIdAndArchivedFalse(foreignCategory, CHAT_ID))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.addSpending(USER_ID, CHAT_ID, session))
@@ -121,7 +121,7 @@ class ExpenseServiceTest {
         when(chatRepo.findById(CHAT_ID)).thenReturn(Optional.of(chat));
         when(chatMemberRepo.findByChatIdAndUserId(CHAT_ID, USER_ID))
                 .thenReturn(Optional.of(member));
-        when(categoryRepo.findByIdAndChatId(category.getId(), CHAT_ID))
+        when(categoryRepo.findByIdAndChatIdAndArchivedFalse(category.getId(), CHAT_ID))
                 .thenReturn(Optional.of(category));
         when(expenseRepo.save(any(ExpenseJpa.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -134,9 +134,66 @@ class ExpenseServiceTest {
         assertThat(event.getValue().chatId()).isEqualTo(CHAT_ID.getId());
     }
 
+    @Test
+    void derivesMonthlyGoalFromCategoryGoals() {
+        ChatJpa chat = chat();
+        ChatMemberJpa member = new ChatMemberJpa();
+        CategoryJpa groceries = category("Продукты", "100");
+        CategoryJpa transport = category("Транспорт", "200");
+        when(chatRepo.findById(CHAT_ID)).thenReturn(Optional.of(chat));
+        when(chatMemberRepo.findByChatIdAndUserId(CHAT_ID, USER_ID))
+                .thenReturn(Optional.of(member));
+        when(categoryRepo.findByIdAndChatIdAndArchivedFalse(groceries.getId(), CHAT_ID))
+                .thenReturn(Optional.of(groceries));
+        when(categoryRepo.save(groceries)).thenReturn(groceries);
+        when(categoryRepo.findAllByChatIdAndArchivedFalse(CHAT_ID))
+                .thenReturn(List.of(groceries, transport));
+        when(chatRepo.save(chat)).thenReturn(chat);
+
+        service.updateCategoryLimit(
+                CHAT_ID,
+                USER_ID,
+                groceries.getId(),
+                new BigDecimal("150")
+        );
+
+        assertThat(groceries.getSpendingLimit()).isEqualByComparingTo("150");
+        assertThat(chat.getMonthLimit()).isEqualByComparingTo("350");
+    }
+
+    @Test
+    void archivesCategoryWithoutDeletingHistoricalExpenses() {
+        ChatJpa chat = chat();
+        ChatMemberJpa member = new ChatMemberJpa();
+        CategoryJpa groceries = category("Продукты", "100");
+        CategoryJpa transport = category("Транспорт", "200");
+        when(chatRepo.findById(CHAT_ID)).thenReturn(Optional.of(chat));
+        when(chatMemberRepo.findByChatIdAndUserId(CHAT_ID, USER_ID))
+                .thenReturn(Optional.of(member));
+        when(categoryRepo.findAllByChatIdAndArchivedFalse(CHAT_ID))
+                .thenReturn(List.of(groceries, transport));
+        when(chatRepo.save(chat)).thenReturn(chat);
+
+        service.deleteCategory(CHAT_ID, USER_ID, groceries.getId());
+
+        assertThat(groceries.isArchived()).isTrue();
+        assertThat(groceries.getSpendingLimit()).isNull();
+        assertThat(chat.getMonthLimit()).isEqualByComparingTo("200");
+        verify(categoryRepo).save(groceries);
+    }
+
     private ChatJpa chat() {
         ChatJpa chat = new ChatJpa();
         chat.setId(CHAT_ID);
         return chat;
+    }
+
+    private CategoryJpa category(String name, String spendingLimit) {
+        CategoryJpa category = new CategoryJpa();
+        category.setId(new CategoryId(UUID.randomUUID()));
+        category.setChat(chat());
+        category.setName(name);
+        category.setSpendingLimit(new BigDecimal(spendingLimit));
+        return category;
     }
 }

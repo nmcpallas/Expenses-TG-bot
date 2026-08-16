@@ -6,6 +6,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.menubutton.SetChatMenuButton;
+import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
+import org.telegram.telegrambots.meta.api.objects.menubutton.MenuButtonCommands;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,16 +22,19 @@ class TelegramCommandInitializerTest {
     private TelegramClient telegramClient;
 
     @Test
-    void registersHelpCommandAndCommandsMenu() throws Exception {
+    void registersHelpAndAppCommandsAndCommandsMenu() throws Exception {
         new TelegramCommandInitializer(telegramClient, true).registerCommands();
 
         var commands = org.mockito.ArgumentCaptor.forClass(SetMyCommands.class);
         verify(telegramClient).execute(commands.capture());
-        assertThat(commands.getValue().getCommands()).singleElement().satisfies(command -> {
-            assertThat(command.getCommand()).isEqualTo("help");
-            assertThat(command.getDescription()).isEqualTo("Как пользоваться ботом");
-        });
-        verify(telegramClient).execute(any(SetChatMenuButton.class));
+        assertThat(commands.getValue().getCommands())
+                .extracting(BotCommand::getCommand)
+                .containsExactly("help", "app");
+        assertThat(commands.getValue().getCommands().get(1).getDescription())
+                .isEqualTo("Открыть бюджет этого чата");
+        var menu = org.mockito.ArgumentCaptor.forClass(SetChatMenuButton.class);
+        verify(telegramClient).execute(menu.capture());
+        assertThat(menu.getValue().getMenuButton()).isInstanceOf(MenuButtonCommands.class);
     }
 
     @Test

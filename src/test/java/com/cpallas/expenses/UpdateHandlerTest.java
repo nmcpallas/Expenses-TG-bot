@@ -3,6 +3,7 @@ package com.cpallas.expenses;
 import com.cpallas.expenses.controller.handler.UpdateHandler;
 import com.cpallas.expenses.enums.FlowType;
 import com.cpallas.expenses.enums.Step;
+import com.cpallas.expenses.miniapp.MiniAppLaunchContextService;
 import com.cpallas.expenses.service.flow.ExpenseActionFlowService;
 import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class UpdateHandlerTest {
     private ExpenseActionFlowService expenseActionFlowService;
 
     @Test
-    void startShowsShortDescriptionAndHelpButton() throws Exception {
+    void startShowsShortDescriptionAndMiniAppButtonNextToHelp() throws Exception {
         handler().handle(textUpdate(1L, 1L, "/start"));
 
         SendMessage response = sendMessages().getFirst();
@@ -50,8 +51,14 @@ class UpdateHandlerTest {
                 .contains("кофе 35000")
                 .contains("пришлю отчёты");
         InlineKeyboardMarkup markup = (InlineKeyboardMarkup) response.getReplyMarkup();
-        assertThat(markup.getKeyboard().getFirst().getFirst().getText()).isEqualTo("Help");
-        assertThat(markup.getKeyboard().getFirst().getFirst().getCallbackData()).isEqualTo("HELP");
+        assertThat(markup.getKeyboard()).singleElement().satisfies(row -> {
+            assertThat(row).hasSize(2);
+            assertThat(row.getFirst().getText()).isEqualTo("Открыть бюджет");
+            assertThat(row.getFirst().getWebApp().getUrl())
+                    .isEqualTo("https://budget.example.test");
+            assertThat(row.getLast().getText()).isEqualTo("Help");
+            assertThat(row.getLast().getCallbackData()).isEqualTo("HELP");
+        });
     }
 
     @Test
@@ -72,6 +79,35 @@ class UpdateHandlerTest {
         assertThat(response.getText())
                 .contains("Просто напишите трату")
                 .contains("пришлю отчёты");
+    }
+
+    @Test
+    void startInGroupShowsPrivateChatLinkInsteadOfUnsupportedWebAppButton() throws Exception {
+        handler().handle(textUpdate(-100123L, 1L, "/start", "group"));
+
+        SendMessage response = sendMessages().getFirst();
+        InlineKeyboardMarkup markup = (InlineKeyboardMarkup) response.getReplyMarkup();
+        assertThat(markup.getKeyboard().getFirst().getFirst()).satisfies(button -> {
+            assertThat(button.getText()).isEqualTo("Открыть общий бюджет");
+            assertThat(button.getWebApp()).isNull();
+            assertThat(button.getUrl())
+                    .startsWith("https://t.me/expenses_statistic_bot?startapp=v1_");
+        });
+    }
+
+    @Test
+    void appCommandInGroupShowsSharedBudgetButton() throws Exception {
+        handler().handle(textUpdate(-100123L, 42L, "/app", "supergroup"));
+
+        SendMessage response = sendMessages().getFirst();
+        assertThat(response.getText()).isEqualTo("Общий бюджет этого чата.");
+        InlineKeyboardMarkup markup = (InlineKeyboardMarkup) response.getReplyMarkup();
+        assertThat(markup.getKeyboard().getFirst().getFirst()).satisfies(button -> {
+            assertThat(button.getText()).isEqualTo("Открыть общий бюджет");
+            assertThat(button.getWebApp()).isNull();
+            assertThat(button.getUrl())
+                    .startsWith("https://t.me/expenses_statistic_bot?startapp=v1_");
+        });
     }
 
     @Test
@@ -127,16 +163,23 @@ class UpdateHandlerTest {
         return new UpdateHandler(
                 telegramClient,
                 quickExpenseFlowService,
-                expenseActionFlowService
+                expenseActionFlowService,
+                "https://budget.example.test",
+                "@expenses_statistic_bot",
+                new MiniAppLaunchContextService("123456:test-token")
         );
     }
 
     private Update textUpdate(Long chatId, Long userId, String text) {
+        return textUpdate(chatId, userId, text, "private");
+    }
+
+    private Update textUpdate(Long chatId, Long userId, String text, String chatType) {
         Update update = new Update();
         Message message = new Message();
         message.setText(text);
         message.setFrom(new User(userId, "test", false));
-        message.setChat(new Chat(chatId, "test"));
+        message.setChat(new Chat(chatId, chatType));
         update.setMessage(message);
         return update;
     }
@@ -148,7 +191,7 @@ class UpdateHandlerTest {
         callback.setData(data);
         callback.setFrom(new User(userId, "test", false));
         Message message = new Message();
-        message.setChat(new Chat(chatId, "test"));
+        message.setChat(new Chat(chatId, "private"));
         callback.setMessage(message);
         update.setCallbackQuery(callback);
         return update;

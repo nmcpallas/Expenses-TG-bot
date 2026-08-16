@@ -28,6 +28,9 @@ public class CategoryJpa extends AuditableBaseJpa {
     @Column(name = "spending_limit", precision = 12, scale = 2)
     private BigDecimal spendingLimit;
 
+    @Column(nullable = false)
+    private boolean archived;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private ZonedDateTime createdAt;
 

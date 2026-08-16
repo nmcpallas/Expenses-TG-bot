@@ -3,24 +3,32 @@ package com.cpallas.expenses.controller.handler;
 import com.cpallas.expenses.enums.Step;
 import com.cpallas.expenses.UserSession;
 import com.cpallas.expenses.enums.FlowType;
+import com.cpallas.expenses.miniapp.MiniAppLaunchContextService;
 import com.cpallas.expenses.service.flow.ExpenseActionFlowService;
 import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
+import com.cpallas.expenses.storage.ids.ChatId;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.cpallas.expenses.controller.util.MessageUtil.createBtn;
 import static com.cpallas.expenses.controller.util.MessageUtil.createMessage;
+import static com.cpallas.expenses.controller.util.MessageUtil.createUrlBtn;
+import static com.cpallas.expenses.controller.util.MessageUtil.createWebAppBtn;
 
 @Slf4j
 @Service
@@ -36,6 +44,9 @@ public class UpdateHandler {
     private final TelegramClient telegramClient;
     private final QuickExpenseFlowService quickExpenseFlowService;
     private final ExpenseActionFlowService expenseActionFlowService;
+    private final String miniAppUrl;
+    private final String botUsername;
+    private final MiniAppLaunchContextService launchContextService;
     private final Cache<SessionKey, UserSession> sessions = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofMinutes(3))
             .maximumSize(1_000)
@@ -43,20 +54,35 @@ public class UpdateHandler {
 
     public UpdateHandler(TelegramClient telegramClient,
                          QuickExpenseFlowService quickExpenseFlowService,
-                         ExpenseActionFlowService expenseActionFlowService) {
+                         ExpenseActionFlowService expenseActionFlowService,
+                         @Value("${expense.mini-app.url:}") String miniAppUrl,
+                         @Value("${telegram.bot.username:}") String botUsername,
+                         MiniAppLaunchContextService launchContextService) {
         this.telegramClient = telegramClient;
         this.quickExpenseFlowService = quickExpenseFlowService;
         this.expenseActionFlowService = expenseActionFlowService;
+        this.miniAppUrl = miniAppUrl == null ? "" : miniAppUrl.trim();
+        this.botUsername = normalizeBotUsername(botUsername);
+        this.launchContextService = launchContextService;
     }
 
     public void handle(Update update) throws TelegramApiException {
         Long chatId = getChatIdFromUpdate(update);
         SessionKey sessionKey = new SessionKey(chatId, getUserIdFromUpdate(update));
         try {
+            if (isApp(update)) {
+                removeSession(sessionKey);
+                sendApp(chatId, isPrivateChat(update));
+                return;
+            }
             if (isStart(update) || isHelp(update)) {
                 removeSession(sessionKey);
                 releaseButton(update);
-                sendHelp(chatId, isStart(update));
+                sendHelp(
+                        chatId,
+                        isStart(update),
+                        isPrivateChat(update)
+                );
                 return;
             }
             UserSession session = sessions.getIfPresent(sessionKey);
@@ -167,6 +193,10 @@ public class UpdateHandler {
                 && HELP_CALLBACK.equals(update.getCallbackQuery().getData());
     }
 
+    private boolean isApp(Update update) {
+        return hasCommand(update, "/app");
+    }
+
     private boolean hasCommand(Update update, String command) {
         if (!update.hasMessage() || !update.getMessage().hasText()) {
             return false;
@@ -177,16 +207,72 @@ public class UpdateHandler {
                 || text.regionMatches(true, 0, command + " ", 0, command.length() + 1);
     }
 
-    private void sendHelp(Long chatId, boolean showHelpButton) throws TelegramApiException {
+    private void sendHelp(Long chatId,
+                          boolean showHelpButton,
+                          boolean privateChat) throws TelegramApiException {
         SendMessage message = createMessage(HELP_TEXT, chatId);
+        List<InlineKeyboardButton> buttons = new ArrayList<>();
+        appButton(chatId, privateChat).ifPresent(buttons::add);
         if (showHelpButton) {
-            message.setReplyMarkup(new InlineKeyboardMarkup(
-                    java.util.List.of(new InlineKeyboardRow(
-                            createBtn("Help", HELP_CALLBACK)
-                    ))
-            ));
+            buttons.add(createBtn("Help", HELP_CALLBACK));
+        }
+        if (!buttons.isEmpty()) {
+            message.setReplyMarkup(new InlineKeyboardMarkup(List.of(new InlineKeyboardRow(buttons))));
         }
         telegramClient.execute(message);
+    }
+
+    private void sendApp(Long chatId, boolean privateChat)
+            throws TelegramApiException {
+        SendMessage message = createMessage(
+                privateChat ? "Ваш личный бюджет." : "Общий бюджет этого чата.",
+                chatId
+        );
+        appButton(chatId, privateChat).ifPresent(button ->
+                message.setReplyMarkup(new InlineKeyboardMarkup(
+                        List.of(new InlineKeyboardRow(button))
+                ))
+        );
+        telegramClient.execute(message);
+    }
+
+    private java.util.Optional<InlineKeyboardButton> appButton(
+            Long chatId,
+            boolean privateChat
+    ) {
+        if (miniAppUrl.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        if (privateChat) {
+            return java.util.Optional.of(createWebAppBtn("Открыть бюджет", miniAppUrl));
+        }
+        if (botUsername.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String startParam = launchContextService.createGroupStartParam(
+                new ChatId(chatId)
+        );
+        return java.util.Optional.of(createUrlBtn(
+                "Открыть общий бюджет",
+                "https://t.me/" + botUsername + "?startapp=" + startParam
+        ));
+    }
+
+    private boolean isPrivateChat(Update update) {
+        if (update.hasMessage() && update.getMessage().getChat() != null) {
+            return Boolean.TRUE.equals(update.getMessage().getChat().isUserChat());
+        }
+        return update.hasCallbackQuery()
+                && update.getCallbackQuery().getMessage() != null
+                && update.getCallbackQuery().getMessage().getChat() != null
+                && Boolean.TRUE.equals(update.getCallbackQuery().getMessage().getChat().isUserChat());
+    }
+
+    private String normalizeBotUsername(String username) {
+        if (username == null) {
+            return "";
+        }
+        return username.trim().replaceFirst("^@", "");
     }
 
     private Long getChatIdFromUpdate(Update update) {

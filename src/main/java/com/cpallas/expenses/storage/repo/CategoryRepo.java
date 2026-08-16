@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface CategoryRepo extends JpaRepository<CategoryJpa, CategoryId> {
 
-    List<CategoryJpa> findAllByChatId(ChatId chatId);
+    List<CategoryJpa> findAllByChatIdAndArchivedFalse(ChatId chatId);
 
-    Optional<CategoryJpa> findByIdAndChatId(CategoryId categoryId, ChatId chatId);
+    Optional<CategoryJpa> findByIdAndChatIdAndArchivedFalse(CategoryId categoryId, ChatId chatId);
 }

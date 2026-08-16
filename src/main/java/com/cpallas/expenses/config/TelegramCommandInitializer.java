@@ -17,7 +17,6 @@ public class TelegramCommandInitializer {
 
     private final TelegramClient telegramClient;
     private final boolean telegramEnabled;
-
     public TelegramCommandInitializer(
             TelegramClient telegramClient,
             @Value("${telegram.enabled:true}") boolean telegramEnabled
@@ -36,6 +35,10 @@ public class TelegramCommandInitializer {
                     .command(BotCommand.builder()
                             .command("help")
                             .description("Как пользоваться ботом")
+                            .build())
+                    .command(BotCommand.builder()
+                            .command("app")
+                            .description("Открыть бюджет этого чата")
                             .build())
                     .build());
             telegramClient.execute(SetChatMenuButton.builder()

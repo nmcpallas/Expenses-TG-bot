@@ -5,9 +5,11 @@ import com.cpallas.expenses.controller.TelegramController;
 import com.cpallas.expenses.controller.handler.ChatNotifier;
 import com.cpallas.expenses.controller.handler.UpdateHandler;
 import com.cpallas.expenses.controller.process.ChatUpdateDispatcher;
+import com.cpallas.expenses.miniapp.MiniAppLaunchContextService;
 import com.cpallas.expenses.service.flow.ExpenseActionFlowService;
 import com.cpallas.expenses.service.ml.QuickExpenseFlowService;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
@@ -24,11 +26,17 @@ public class TelegramConfig {
     @Bean
     public UpdateHandler updateHandler(TelegramClient telegramClient,
                                        QuickExpenseFlowService quickExpenseFlowService,
-                                       ExpenseActionFlowService expenseActionFlowService) {
+                                       ExpenseActionFlowService expenseActionFlowService,
+                                       @Value("${expense.mini-app.url:}") String miniAppUrl,
+                                       @Value("${telegram.bot.username:}") String botUsername,
+                                       MiniAppLaunchContextService launchContextService) {
         return new UpdateHandler(
                 telegramClient,
                 quickExpenseFlowService,
-                expenseActionFlowService
+                expenseActionFlowService,
+                miniAppUrl,
+                botUsername,
+                launchContextService
         );
     }
 
@@ -50,7 +58,13 @@ public class TelegramConfig {
     }
 
     @Bean
-    public TelegramController telegramController(@Value("${telegram.bot.token}")String token, UpdateConsumer consumer) {
+    @ConditionalOnProperty(
+            name = "telegram.enabled",
+            havingValue = "true",
+            matchIfMissing = true
+    )
+    public TelegramController telegramController(@Value("${telegram.bot.token}") String token,
+                                                  UpdateConsumer consumer) {
         return new TelegramController(token, consumer);
     }
 }

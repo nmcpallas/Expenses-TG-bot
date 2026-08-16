@@ -63,6 +63,8 @@ system:
   chat-blocking-duration: ${CHAT_BLOCKING_DURATION:1000}
 
 expense:
+  admin:
+    broadcast-token: ${EXPENSE_ADMIN_BROADCAST_TOKEN:}
   ml:
     enabled: ${EXPENSE_ML_ENABLED:true}
     mock-enabled: ${EXPENSE_ML_MOCK_ENABLED:false}
@@ -79,6 +81,12 @@ expense:
     artifact-max-bytes: ${EXPENSE_REPORT_ARTIFACT_MAX_BYTES:20971520}
   outbox:
     fixed-delay-ms: ${EXPENSE_OUTBOX_FIXED_DELAY_MS:1000}
+  mini-app:
+    url: ${MINI_APP_URL:}
+    auth-max-age-seconds: ${MINI_APP_AUTH_MAX_AGE_SECONDS:3600}
+    allowed-origins: ${MINI_APP_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+  analytics:
+    base-url: ${EXPENSE_ANALYTICS_BASE_URL:http://expense-analytics:8080}
   weekly-report:
     enabled: ${EXPENSE_WEEKLY_REPORT_ENABLED:true}
     cron: ${EXPENSE_WEEKLY_REPORT_CRON:0 0 10 * * MON}
